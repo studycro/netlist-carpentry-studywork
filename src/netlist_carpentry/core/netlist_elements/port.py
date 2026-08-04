@@ -3,21 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    Dict,
-    Generator,
-    Generic,
-    List,
-    Literal,
-    Optional,
-    Set,
-    Tuple,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import TYPE_CHECKING, Callable, Dict, Generator, Generic, List, Literal, Optional, Set, Tuple, TypeVar, Union, overload
 
 from pydantic import BaseModel, NonNegativeInt, PositiveInt, model_validator
 from typing_extensions import Self
@@ -45,6 +31,9 @@ if TYPE_CHECKING:
 
 T_PARENT = TypeVar('T_PARENT', bound='Union[Module, Instance]')
 ANY_PORT = Union['Port[Module]', 'Port[Instance]']
+
+WireIndex = NonNegativeInt
+PortIndex = NonNegativeInt
 
 
 class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
@@ -995,6 +984,43 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
         """
         # "if" clause skips constant wire segments, which do not have a parent by definition
         return set(ws.parent for ws in self.connected_wire_segments.values() if ws.has_parent())
+
+    @property
+    def index_groups(self) -> Dict[WirePath, Dict[PortIndex, WireIndex]]:
+        """Groups the indices of this port by the wire they are connected to.
+
+        This means, for each wire connected to this port, it returns a dictionary of the port indices
+        that are connected to that wire, along with the corresponding wire indices.
+
+        This is useful for determining if the port is connected 1-to-1 to a certain wire, and how to simplify/merge connection data.
+
+        Returns:
+            Dict[WirePath, Dict[PortIndex, WireIndex]]: A dictionary where the keys are WirePaths of connected wires,
+                and the values are dictionaries mapping PortIndex (positive int) to WireIndex (positive int) for that wire.
+
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> p = m.create_port('data', 'input', width=4)
+            >>> wire1 = m.create_wire('w1', width=2)
+            >>> wire2 = m.create_wire('w2', width=2)
+            >>> m.connect(wire1[0], p[0])
+            >>> m.connect(wire1[1], p[3])
+            >>> m.connect(wire2[0], p[1])
+            >>> m.connect(wire2[1], p[2])
+            >>> p.index_groups
+            {WirePath m.w1: {0: 0, 3: 1}, WirePath m.w2: {1: 0, 2: 1}}
+        """
+        index_groups: Dict[WirePath, Dict[PortIndex, WireIndex]] = {}
+        for idx, ws_path in self.connected_wire_segments.items():
+            if ws_path.has_parent() is False:
+                continue  # Skip constant wire segments, which do not have a parent by definition
+            wire = ws_path.parent
+            if wire not in index_groups:
+                index_groups[wire] = {}
+            index_groups[wire][idx] = int(ws_path.name)
+        return index_groups
 
     @property
     def is_connected_1to1(self) -> bool:

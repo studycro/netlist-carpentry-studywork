@@ -387,6 +387,20 @@ def test_connected_wires(standard_port_in: Port[Instance], standard_port_out: Po
     assert standard_port_out.connected_wires == {WirePath(raw='test_module1.wire1'), WirePath(raw='test_module1.d')}
 
 
+def test_index_groups(standard_port_in: Port[Instance], standard_port_out: Port[Module]) -> None:
+    assert standard_port_in.index_groups == {}
+    assert standard_port_out.index_groups == {WirePath(raw='test_module1.wire1'): {0: 0, 1: 0}}  # Both indices connected to the same wire segment
+    standard_port_out[1].change_connection(WireSegmentPath(raw='test_module1.d.0'))
+    assert standard_port_out.index_groups == {WirePath(raw='test_module1.wire1'): {0: 0}, WirePath(raw='test_module1.d'): {1: 0}}
+
+    m = Module(name='m')
+    p = m.create_port('p', direction=Direction.IN, width=4, offset=4)
+    assert p.index_groups == {}
+    w = m.create_wire('w', width=4)
+    m.connect(w, p)
+    assert p.index_groups == {WirePath(raw='m.w'): {4: 0, 5: 1, 6: 2, 7: 3}}
+
+
 def test_is_connected_1to1() -> None:
     m = Module(name='m')
     w = m.create_wire('w', width=4, offset=4)

@@ -1033,7 +1033,8 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
                     '\tconnect(wire.segment[1], port.segment[4])'
                 )
             for idx in wire_like.segments:
-                self._connect_to_wire_segment(port_like[idx], wire_like[idx])
+                port_idx = (port_like.offset or 0) + idx - (wire_like.offset or 0)
+                self._connect_to_wire_segment(port_like[port_idx], wire_like[idx])
             return
 
         # Normalize to segment-level objects
