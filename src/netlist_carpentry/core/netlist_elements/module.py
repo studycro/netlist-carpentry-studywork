@@ -883,8 +883,8 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         source_obj = self._get_from_path_or_object(source)
         target_obj = self._get_from_path_or_object(target)
 
-        # Validate: target must be unconnected
-        if not target_obj.is_tied:
+        # Validate: target must be unconnected (only meaningful for port segments)
+        if hasattr(target_obj, 'is_tied') and not target_obj.is_tied:
             raise AlreadyConnectedError(f'{target_obj.type.value} {target_obj.raw_path} must be unconnected before attempting to connect it!')
 
         # Dispatch based on source/target types
@@ -1473,7 +1473,10 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         for n, v, key, data in neighbors:
             neighbor_node = v if get_outgoing else n
             neighbor = self.instances[neighbor_node] if neighbor_node in self.instances else self.ports[neighbor_node]
-            node_port_name: str = key.split(CFG.id_internal)[0 if get_outgoing else 1]
+            parts = key.split(CFG.id_internal)
+            # Key format: {drv_port}§{ld_port} (connected 1:1 via the wire) or
+            #             {drv_port}[{drv_seg}]§{ld_port}[{ld_seg}] (only connected segment-wise)
+            node_port_name: str = parts[0] if get_outgoing else (parts[2] if len(parts) > 2 else parts[1])
             node_index = data['dr_seg'] if get_outgoing else data['ld_seg']
             if node_port_name not in insts:
                 insts[node_port_name] = defaultdict(list)

@@ -2002,20 +2002,20 @@ def test_build_graph(connected_module: Module) -> None:
     assert len(g.in_edges('dff_inst')) == 3
 
     # Edge connections - combinational
-    assert g.edges['in1', 'and_inst', 'in1§A'] == {'ename': 'in1', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['in2', 'and_inst', 'in2§B'] == {'ename': 'in2', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['in3', 'or_inst', 'in3§A'] == {'ename': 'in3', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['in4', 'or_inst', 'in4§B'] == {'ename': 'in4', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['and_inst', 'xor_inst', 'Y§A'] == {'ename': 'wire_and', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['or_inst', 'xor_inst', 'Y§B'] == {'ename': 'wire_or', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['xor_inst', 'not_inst', 'Y§A'] == {'ename': 'wire_xor', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['not_inst', 'out', 'Y§out'] == {'ename': 'out', 'dr_seg': 0, 'ld_seg': 0}
+    assert g.edges['in1', 'and_inst', 'in1§A'] == {'ename': 'in1', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['in2', 'and_inst', 'in2§B'] == {'ename': 'in2', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['in3', 'or_inst', 'in3§A'] == {'ename': 'in3', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['in4', 'or_inst', 'in4§B'] == {'ename': 'in4', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['and_inst', 'xor_inst', 'Y§A'] == {'ename': 'wire_and', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['or_inst', 'xor_inst', 'Y§B'] == {'ename': 'wire_or', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['xor_inst', 'not_inst', 'Y§A'] == {'ename': 'wire_xor', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['not_inst', 'out', 'Y§out'] == {'ename': 'out', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
 
     # Edge connections - sequential
-    assert g.edges['xor_inst', 'dff_inst', 'Y§D'] == {'ename': 'wire_xor', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['clk', 'dff_inst', 'clk§CLK'] == {'ename': 'clk', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['rst', 'dff_inst', 'rst§RST'] == {'ename': 'rst', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['dff_inst', 'out_ff', 'Q§out_ff'] == {'ename': 'out_ff', 'dr_seg': 0, 'ld_seg': 0}
+    assert g.edges['xor_inst', 'dff_inst', 'Y§D'] == {'ename': 'wire_xor', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['clk', 'dff_inst', 'clk§CLK'] == {'ename': 'clk', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['rst', 'dff_inst', 'rst§RST'] == {'ename': 'rst', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
+    assert g.edges['dff_inst', 'out_ff', 'Q§out_ff'] == {'ename': 'out_ff', 'dr_seg': 0, 'ld_seg': 0, 'width': 1}
 
     # Nodes
     assert len(g.nodes) == 5 + 8  # 5 instances + 8 in/out ports

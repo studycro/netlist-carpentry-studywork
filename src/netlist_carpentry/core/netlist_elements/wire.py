@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import builtins
 import warnings
-from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Literal, Optional, Tuple, Union, overload
+from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Literal, Optional, Set, Tuple, Union, overload
 
 from pydantic import BaseModel, NonNegativeInt, PositiveInt, model_validator
 from typing_extensions import Self
@@ -17,7 +17,7 @@ from netlist_carpentry.core.exceptions import (
     ParentNotFoundError,
     UnsupportedOperationError,
 )
-from netlist_carpentry.core.netlist_elements.element_path import WirePath
+from netlist_carpentry.core.netlist_elements.element_path import PortPath, WirePath
 from netlist_carpentry.core.netlist_elements.mixins.metadata import METADATA_DICT, NESTED_DICT
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
 from netlist_carpentry.core.netlist_elements.port_segment import PortSegment
@@ -239,6 +239,30 @@ class Wire(NetlistElement, BaseModel):
         Accordingly, each port segment from the list is connected to the same wire segment.
         """
         return {idx: s.port_segments for idx, s in self}
+
+    @property
+    def fully_connected_ports(self) -> Set[PortPath]:
+        """
+        Set of fully connected ports to this wire.
+
+        A port is considered fully connected to a wire if all its segments are connected to the wire and in the correct order.
+        This property returns a set of PortPath objects representing the fully connected ports.
+        Any port in this set is guaranteed to be fully connected to this wire, and the wire is guaranteed to be fully connected to any port in this set.
+        This conforms to the verilog equivalent of `assign wire = port;` without any slicing.
+        """
+        ports = set()
+        candidates: Dict[PortPath, List[NonNegativeInt]] = {}
+        for idx, segs in self.connected_port_segments.items():
+            for seg in segs:
+                if seg.parent.path not in candidates:
+                    candidates[seg.parent.path] = []
+                candidates[seg.parent.path].append(idx)
+        for port_path, indices in candidates.items():
+            port = self.parent.get_from_path(port_path)
+            offset = (port.offset or 0) - (self.offset or 0)
+            if [s - offset for s in port.segments.keys()] == indices and port.width == self.width:  # Must be exact same order and width
+                ports.add(port_path)
+        return ports
 
     @model_validator(mode='after')
     def _link_parent(self) -> Self:

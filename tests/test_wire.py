@@ -173,6 +173,36 @@ def test_wire_signed_unsigned(standard_wire: Wire) -> None:
     assert standard_wire.unsigned
 
 
+def test_fully_connected_ports() -> None:
+    m = Module(name='m')
+    w = m.create_wire('w', width=4)  # No ports connected yet
+    assert w.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    p0 = m.create_port(name='p0', direction=Direction.IN, width=1)
+    m.connect(w[0], p0)  # Connect only the first segment of the wire to a port -> not fully connected
+    assert w.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    p1 = m.create_port(name='p1', direction=Direction.IN, width=4)
+    m.connect(w, p1)
+    assert w.fully_connected_ports == {p1.path}
+    p2 = m.create_port(name='p2', direction=Direction.OUT, width=5)
+    m.connect(w[0], p2[0])
+    m.connect(w[1], p2[1])
+    m.connect(w[2], p2[2])
+    m.connect(w[3], p2[3])
+    assert w.fully_connected_ports == {p1.path}  # Only p1 is fully connected
+    p3 = m.create_port(name='p3', direction=Direction.OUT, width=4, offset=2)
+    m.connect(w, p3)
+    for i in range(4):
+        assert p3[i + 2] in w.connected_port_segments[i]
+        assert p3[i + 2].ws is w[i]
+    assert w.fully_connected_ports == {p1.path, p3.path}  # p1 and p3 are fully connected, p2 is not
+
+    p4 = m.create_port(name='p4', direction=Direction.OUT, width=4, offset=2)
+    w2 = m.create_wire('w2', width=4, offset=4)
+    assert w2.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    m.connect(w2, p4)  # Connect w2 to p4, but w2 is offset=4 and p4 is offset=2, total width is 4 for both, so both are fully connected
+    assert w2.fully_connected_ports == {p4.path}
+
+
 def test_add_wire_segment(standard_wire: Wire, locked_wire: Wire) -> None:
     assert len(standard_wire.segments) == 1  # There is one wire segment in the standard wire by default
 
