@@ -151,7 +151,7 @@ pydocstyle.convention = "google"
 extend-select = ["W", "C90", "D", "I", "ERA", "PERF", "RUF"]
 # Missing docstring warnings are partially disabled.
 # TODO You can remove the next line for more aggressive docstring rules.
-extend-ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "D202", "D205", "D212"]
+extend-ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "D202", "D205", "D212", "UP", "FA", "SIM", "PIE"]
 
 [tool.ruff.format]
 quote-style = "single"
