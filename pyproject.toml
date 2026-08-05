@@ -79,7 +79,7 @@ dev = [
     "anybadge>=1.16.0",
     # Static code checkers
     "mypy>=1.14.1",
-    "ruff>=0.9.4",
+    "ruff==0.14.9", # Pinned to specific version, since it somehow broke in one of the repos during one run
     # Build tools
     "build>=1.2.2",
     "twine>=6.1.0",
