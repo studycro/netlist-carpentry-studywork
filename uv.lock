@@ -6938,7 +6938,7 @@ wheels = [
 
 [[package]]
 name = "yowasp-yosys"
-version = "0.67.0.0.post1190"
+version = "0.68.0.0.post1208"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click", version = "8.1.8", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -6946,7 +6946,7 @@ dependencies = [
     { name = "yowasp-runtime" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/9c/d9b6ae3795a911b8cbc61a8c656d0c8f661a63cb1c2f97c5ab61f02716e6/yowasp_yosys-0.67.0.0.post1190-py3-none-any.whl", hash = "sha256:b3f48c4d24d42daf5146c9932356df223485086868be8171855f79721d56464a", size = 15621659, upload-time = "2026-07-09T13:08:31.802Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/91/42f59d7c4a8bdfec79891fe2cdb0d3ff0af02515c08c0f8fcee92599b97a/yowasp_yosys-0.68.0.0.post1208-py3-none-any.whl", hash = "sha256:0552936b1482415512e39915a1c0f3ed1135151293440e266064f3f75e90d4a2", size = 15656724, upload-time = "2026-08-05T11:36:53.451Z" },
 ]
 
 [[package]]
