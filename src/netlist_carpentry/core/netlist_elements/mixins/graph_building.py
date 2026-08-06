@@ -155,4 +155,4 @@ class GraphBuildingMixin(ModuleBaseMixin):
         for i in range(drv_port.width):
             g.remove_edge(n_d, n_l, f'{p_d}[{i + drv_offset}]{CFG.id_internal}{p_l}[{i + ld_offset}]')
         # TODO dr_seg/ld_seg should be None
-        g.add_edge(n_d, n_l, f'{p_d}{CFG.id_internal}{p_l}', dr_seg=0, ld_seg=0, width=drv_port.width, ename=wname)
+        g.add_edge(n_d, n_l, f'{p_d}{CFG.id_internal}{p_l}', dr_seg=None, ld_seg=None, width=drv_port.width, ename=wname)

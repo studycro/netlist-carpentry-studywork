@@ -1480,11 +1480,17 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
             node_index = data['dr_seg'] if get_outgoing else data['ld_seg']
             if node_port_name not in insts:
                 insts[node_port_name] = defaultdict(list)
-            insts[node_port_name][node_index].append(neighbor)
-            if not get_outgoing and len(insts[node_port_name][node_index]) > 1:
-                raise MultipleDriverError(
-                    f'Error whilst collecting neighbors: Found multiple drivers for port {node_port_name} (index {node_index}) of instance {n}!'
-                )
+            if node_index is None:
+                port = neighbor.ports[node_port_name] if isinstance(neighbor, Instance) else neighbor
+                indices = [idx for idx, _ in port]
+            else:
+                indices = [node_index]
+            for idx in indices:
+                insts[node_port_name][idx].append(neighbor)
+                if not get_outgoing and len(insts[node_port_name][idx]) > 1:
+                    raise MultipleDriverError(
+                        f'Error whilst collecting neighbors: Found multiple drivers for port {node_port_name} (index {idx}) of instance {n}!'
+                    )
         return insts
 
     def get_succeeding_instances(
