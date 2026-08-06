@@ -1,6 +1,25 @@
-# Changelog 0.5.2 (2026-07-23)
+# Changelog 0.5.3
+
+## ADDED
+- Added `Port.index_groups` property to find parts of ports that share the same wire
+- Added `Wire.fully_connected_ports` property that returns a set of ports names (str) that are fully connected to this wire
 
 ## FIXED
+- Fixed hidden bug in `Module.connect()` method, where the wrong index is taken if target and source have different offsets
+- Fixed some issues in the edge creation within the graph building algorithm:
+  - Split wires (i.e. multi-bit wires that connect segment-wise to different ports) are now represented correctly as multiple edges within the graph, where the edge key now follows the format `input_port[idx]§output_port[idx]`
+  - Full wires (i.e. 1-bit wires, or multi-bit wires that connect full ports without slicing) work the same as previously, and the edge key still follows the format `input_port§output_port`
+- Fixed the `dr_seg` (driver segment index) and `ld_seg` (load segment index) values in the edge data for full wires, where they now hold `None` (since there is no slicing) instead of a meaningless `0`
+
+## REMOVED
+- Removed unused `pmux2mux.v` file, which was previously used as an additional techmap file to resolve priority multiplexers into a tree of standard multiplexers - instead of using this file as a techmap in Yosys, use the `pmuxtree` pass instead
+
+
+# Older Versions
+
+## Changelog 0.5.2 (2026-07-23)
+
+### FIXED
 - Fixed API inconsistency for `Port.tie_signal()` and `Port.set_signal()`
 - Fixed issue with `$pmux` instances by including pmuxtree pass in Yosys config to resolve priority mux instances into normal mux instances
 - Fixed issue with optimization algorithm for inputless submodules
@@ -10,8 +29,6 @@
 - Removed wrongly displayed deprecation warnings
 - Lots of minor fixes and clean-ups in `Multiplexer`/`Demultiplexer` classes, while introducing some DeprecationWarnings hinting to preferred usage
 
-
-# Older Versions
 
 ## Changelog 0.5.1 (2026-07-16)
 
