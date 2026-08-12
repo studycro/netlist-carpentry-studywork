@@ -900,10 +900,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
             self._connect_segments(source_obj, target_obj, new_wire_name)
 
     def _connect_segments(
-        self,
-        source_seg: Union[PortSegment, WireSegment],
-        target_seg: Union[PortSegment, WireSegment],
-        new_wire_name: Optional[str] = None,
+        self, source_seg: Union[PortSegment, WireSegment], target_seg: Union[PortSegment, WireSegment], new_wire_name: Optional[str] = None
     ) -> None:
         """Connect two segments via a wire segment.
 
@@ -928,7 +925,8 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
             wire_seg = source_seg.ws  # type: ignore[union-attr]
 
         # Connect both segments directly to the wire segment
-        self._connect_to_wire_segment(source_seg, wire_seg)
+        if source_seg.is_unconnected:
+            self._connect_to_wire_segment(source_seg, wire_seg)
         self._connect_to_wire_segment(target_seg, wire_seg)
 
     @overload
@@ -1002,21 +1000,17 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         else:
             wire = None
 
-        load_offset = load.offset or 0
+        offset = (load.offset or 0) - (driver.offset or 0)
         for idx, dr_seg in driver:
             # Pick the wire segment: reuse existing or use newly created
-            ws = dr_seg.ws if dr_seg.is_connected else wire[idx]
+            ws = dr_seg.ws if dr_seg.is_connected or wire is None else wire[idx]
 
             # Connect driver segment (if unconnected) and load segment to the same wire
             if dr_seg.is_unconnected:
                 self._connect_to_wire_segment(dr_seg, ws)
-            self._connect_to_wire_segment(load[idx + load_offset], ws)
+            self._connect_to_wire_segment(load[idx + offset], ws)
 
-    def _connect_wire_to_port(
-        self,
-        wire_like: Union[WireSegment, Wire],
-        port_like: Union[PortSegment, T_PORT],
-    ) -> None:
+    def _connect_wire_to_port(self, wire_like: Union[WireSegment, Wire], port_like: Union[PortSegment, T_PORT]) -> None:
         """Connect a wire (or wire segment) to a port (or port segment).
 
         Handles full wire→port (bit-by-bit via ``_connect_to_wire_segment``),

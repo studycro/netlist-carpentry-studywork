@@ -968,12 +968,36 @@ def test_connect(standard_module: Module) -> None:
     assert p.is_unconnected
 
     p4bit = standard_module.create_port('p4bit', direction=Dir.IN, width=4, offset=4)
+    p4out1 = standard_module.create_port('p4out1', direction=Dir.OUT, width=4, offset=4)
+    p4out2 = standard_module.create_port('p4out2', direction=Dir.OUT, width=4, offset=4)
     w4bit = standard_module.create_wire('w4bit', width=4, offset=2)
     standard_module.connect(w4bit, p4bit)
     assert p4bit.is_connected
     assert w4bit.connected_port_segments == {2: [p4bit[4]], 3: [p4bit[5]], 4: [p4bit[6]], 5: [p4bit[7]]}
     for i in range(4):
         assert p4bit[i + 4].ws_path == w4bit[i + 2].path
+
+    standard_module.connect(p4bit, p4out1)
+    assert w4bit.connected_port_segments == {2: [p4bit[4], p4out1[4]], 3: [p4bit[5], p4out1[5]], 4: [p4bit[6], p4out1[6]], 5: [p4bit[7], p4out1[7]]}
+    for i in range(4):
+        assert p4bit[i + 4].ws_path == w4bit[i + 2].path
+        assert p4out1[i + 4].ws_path == w4bit[i + 2].path
+
+    standard_module.connect(p4bit[4], p4out2[4])
+    standard_module.connect(p4bit[6], p4out2[6])
+    assert w4bit.connected_port_segments == {
+        2: [p4bit[4], p4out1[4], p4out2[4]],  # Only first and third are connected
+        3: [p4bit[5], p4out1[5]],
+        4: [p4bit[6], p4out1[6], p4out2[6]],
+        5: [p4bit[7], p4out1[7]],
+    }
+    for i in range(4):
+        assert p4bit[i + 4].ws_path == w4bit[i + 2].path
+        assert p4out1[i + 4].ws_path == w4bit[i + 2].path
+        if i % 2 == 0:
+            assert p4out2[i + 4].ws_path == w4bit[i + 2].path
+        else:
+            assert p4out2[i + 4].is_unconnected
 
 
 def test_connect_full_port_wire(standard_module: Module) -> None:
