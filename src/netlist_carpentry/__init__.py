@@ -4,6 +4,7 @@ import os
 import platform
 import shutil
 
+
 try:
     import pywellen  # noqa: F401
 
@@ -11,6 +12,18 @@ try:
 except ImportError:
     HAS_VCD = False
 
+
+def _nc_version() -> str:
+    from importlib.metadata import version, PackageNotFoundError
+
+    try:
+        return version('netlist-carpentry')
+    except PackageNotFoundError:
+        # This happens if the package isn't installed (e.g., just copied the files)
+        return 'unknown'
+
+
+__version__ = _nc_version()
 
 NC_DIR = os.path.dirname(os.path.abspath(__file__))
 """The root directory of Netlist Carpentry."""
