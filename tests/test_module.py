@@ -1009,6 +1009,12 @@ def test_connect(standard_module: Module) -> None:
     with pytest.raises(UnsupportedOperationError):
         standard_module.connect(p4bit[4], p4out4)  # Now 2 bit wide
 
+    w1 = standard_module.create_wire('w1')
+    p1 = standard_module.create_port('p1')
+    standard_module.connect(w1, p1[0])
+    assert w1[0].port_segments == [p1[0]]
+    assert p1[0].ws is w1[0]
+
 
 def test_connect_full_port_wire(standard_module: Module) -> None:
     standard_module.create_wire('test_wire2', width=8)
