@@ -537,6 +537,14 @@ def test_set_name() -> None:
     w2.set_name('NEW_NAME3')
     assert w2.name == 'NEW_NAME3'
 
+    p3 = w.parent.create_port('SOME_PORT3')
+    w3 = w.parent.create_wire('SOME_WIRE3')
+    w3.set_name('SOME_PORT3')
+    assert w3.name == 'SOME_PORT3'
+    assert p3.is_unconnected
+    w3.parent.connect(w3, p3)
+    assert p3.is_connected
+
 
 def test_set_name_connections() -> None:
     m = Module(name='m')

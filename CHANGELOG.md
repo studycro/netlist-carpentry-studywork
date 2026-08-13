@@ -5,6 +5,7 @@
 - Added `Wire.fully_connected_ports` property that returns a set of ports names (str) that are fully connected to this wire
 
 ## FIXED
+- Setting `create_associated_wire=True` for `Module.create_port()` now actually creates the associated wire (wow what a surprise)
 - Fixed hidden bug in `Module.connect()` method, where the wrong index is taken if target and source have different offsets
 - Fixed some issues in the edge creation within the graph building algorithm:
   - Split wires (i.e. multi-bit wires that connect segment-wise to different ports) are now represented correctly as multiple edges within the graph, where the edge key now follows the format `input_port[idx]§output_port[idx]`
@@ -13,6 +14,8 @@
 - Fixed offset calculation bug in the `Module.connect()` method, where the total offset did not consider driver offset
 - Fixed failing `Module.connect()` when trying to connect an additional load port segment to a driver port segment if the driver already has a load
 - Fixed failing `Module.connect()` if a segment is connected to a 1-bit port/wire - the `Module.connect()` method can now deduce the segment from the 1-bit element and perform the connection as usual
+- Fixed wire renaming (1): if the wire has the same name as a port, but is no longer connected to the port (e.g. due to `Module.disconnect()` on the port), the wire can now be renamed
+- Fixed wire renaming (2): if the target name is a port name, the renaming works; the wire however must then be connected to the port, otherwise, the Verilog write-out would fail
 - Fixed a bunch of typing issues and type hints
 
 ## REMOVED
