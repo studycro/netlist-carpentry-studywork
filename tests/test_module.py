@@ -1216,6 +1216,9 @@ def test_disconnect_module_port(connected_module: Module) -> None:
     w = connected_module.wires['I']
     assert pi.is_connected
     assert w[0].port_segments == [pi[0]]
+    with pytest.raises(UnsupportedOperationError):
+        w.set_name('I2')
+    w.set_name('I')  # To revert partial changes made before the exception was raised
     connected_module.disconnect(pi)
     assert pi.is_unconnected
     assert w[0].port_segments == []

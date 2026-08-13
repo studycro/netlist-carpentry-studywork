@@ -14,6 +14,7 @@ from netlist_carpentry.core.exceptions import (
     ObjectLockedError,
     ObjectNotFoundError,
     ParentNotFoundError,
+    UnsupportedOperationError,
 )
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
@@ -521,6 +522,20 @@ def test_set_name() -> None:
         for ps in ws.port_segments:
             assert 'WIRE' not in ps.ws_path.parts
             assert 'WIREWIRE' in ps.ws_path.parts
+
+    w.parent.create_port('SOME_NEW_WIRE', width=4, create_associated_wire=True)
+    w2 = w.parent.wires['SOME_NEW_WIRE']
+    with pytest.raises(UnsupportedOperationError):
+        w2.set_name('NEW_NAME')
+    w2.set_name('SOME_NEW_WIRE')
+    w2[1].port_segments.clear()  # 0 still connected
+    w2[2].port_segments.clear()
+    w2[3].port_segments.clear()
+    with pytest.raises(UnsupportedOperationError):
+        w2.set_name('NEW_NAME2')
+    w2[0].port_segments.clear()
+    w2.set_name('NEW_NAME3')
+    assert w2.name == 'NEW_NAME3'
 
 
 def test_set_name_connections() -> None:

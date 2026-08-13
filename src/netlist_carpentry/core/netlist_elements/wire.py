@@ -15,6 +15,7 @@ from netlist_carpentry.core.exceptions import (
     IdentifierConflictError,
     MultipleDriverError,
     ParentNotFoundError,
+    UnsupportedOperationError,
 )
 from netlist_carpentry.core.netlist_elements.element_path import PortPath, WirePath
 from netlist_carpentry.core.netlist_elements.mixins.metadata import METADATA_DICT, NESTED_DICT
@@ -566,6 +567,9 @@ class Wire(NetlistElement, BaseModel):
         return mapping if get_mapping else any_or_all(mapping[k] for k in mapping)
 
     def _set_name_recursively(self, old_name: str, new_name: str) -> None:
+        connected_port_names = {p.parent.name for plist in self.connected_port_segments.values() for p in plist}
+        if old_name in connected_port_names:
+            raise UnsupportedOperationError(f'Cannot rename wire {self.raw_path}: Cannot rename a wire that has the same name as a module port!')
         for _, ws in self:
             for ps in ws.port_segments:
                 ps.set_ws_path(ps.ws_path.replace(old_name, new_name))
