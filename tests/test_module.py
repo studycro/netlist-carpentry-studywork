@@ -1237,6 +1237,18 @@ def test_reconnect(connected_module: Module) -> None:
     with pytest.raises(WidthMismatchError):
         connected_module.reconnect(in4, in7)
 
+    o2 = connected_module.create_port('O2', create_associated_wire=True)
+    o3 = connected_module.create_port('O3')
+    and_inst = connected_module.create_instance(AndGate, 'and_inst2')
+    connected_module.connect(o2[0].ws, and_inst.ports['Y'])
+    assert and_inst.connections['Y'] == {0: WireSegmentPath(raw='test_module1.O2.0')}
+    assert o2.is_connected
+    assert o3.is_unconnected
+    connected_module.reconnect(o2, o3)
+    assert and_inst.connections['Y'] == {0: WireSegmentPath(raw='test_module1.O2.0')}
+    assert o2.is_unconnected
+    assert o3.is_connected
+
 
 def test_update_module_instances() -> None:
     m = Module(name='m')
