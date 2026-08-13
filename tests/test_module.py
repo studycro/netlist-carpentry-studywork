@@ -1211,6 +1211,23 @@ def test_disconnect_inst_port_path(connected_module: Module) -> None:
     assert inst.connections[p.name][0] == WIRE_SEGMENT_X.path
 
 
+def test_disconnect_module_port(connected_module: Module) -> None:
+    pi = connected_module.create_port('I', 'in', create_associated_wire=True)
+    w = connected_module.wires['I']
+    assert pi.is_connected
+    assert w[0].port_segments == [pi[0]]
+    connected_module.disconnect(pi)
+    assert pi.is_unconnected
+    assert w[0].port_segments == []
+    w.set_name('I2')
+    assert w.name == 'I2'
+    w2 = connected_module.create_wire('I')
+    assert w2[0].port_segments == []
+    connected_module.connect(w2, pi)
+    assert pi.is_connected
+    assert w2[0].port_segments == [pi[0]]
+
+
 def test_reconnect(connected_module: Module) -> None:
     in3 = connected_module.ports['in3']
     in4 = connected_module.ports['in4']

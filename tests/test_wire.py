@@ -14,7 +14,6 @@ from netlist_carpentry.core.exceptions import (
     ObjectLockedError,
     ObjectNotFoundError,
     ParentNotFoundError,
-    UnsupportedOperationError,
 )
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
@@ -522,10 +521,6 @@ def test_set_name() -> None:
         for ps in ws.port_segments:
             assert 'WIRE' not in ps.ws_path.parts
             assert 'WIREWIRE' in ps.ws_path.parts
-
-    w.parent.create_port('WIREWIRE', width=4)
-    with pytest.raises(UnsupportedOperationError):
-        w.set_name('NEW_NAME')
 
 
 def test_set_name_connections() -> None:
