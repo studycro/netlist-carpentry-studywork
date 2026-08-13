@@ -680,6 +680,21 @@ def test_create_port(empty_module: Module, locked_module: Module) -> None:
     assert LOG.warns_quantity == warns + 1
     assert inv_p.direction is Dir.UNKNOWN
 
+    p_with_w = empty_module.create_port('pWithW', 'in', width=4, offset=4, create_associated_wire=True)
+    assert empty_module.ports['pWithW'] is p_with_w
+    assert empty_module.ports['pWithW'].width == 4
+    assert empty_module.ports['pWithW'].offset == 4
+    assert empty_module.ports['pWithW'].is_connected
+    assert 'pWithW' in empty_module.wires
+    assert empty_module.wires['pWithW'].width == 4
+    assert empty_module.wires['pWithW'].offset == 4
+    assert empty_module.wires['pWithW'].fully_connected_ports == {p_with_w.path}
+
+    empty_module.create_wire('alr_created_w')
+    match_str = "Cannot auto-create wire 'alr_created_w' for port 'alr_created_w': A wire with this name already exists!"
+    with pytest.raises(IdentifierConflictError, match=match_str):
+        empty_module.create_port('alr_created_w', create_associated_wire=True)
+
 
 def test_create_port_check_dependencies(connected_module: Module) -> None:
     w_path = WireSegmentPath(raw='test_module1.in1.0')

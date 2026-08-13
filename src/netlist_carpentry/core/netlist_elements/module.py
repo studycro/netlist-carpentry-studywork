@@ -521,6 +521,13 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         p.create_port_segments(width, offset)
         p.change_mutability(is_now_locked=is_locked)
         LOG.debug(f'Created port {p.raw_path}, {width} bit wide.')
+        if create_associated_wire:
+            try:
+                w = self.create_wire(name, width=width, offset=offset)
+                self.connect(w, p)
+            except IdentifierConflictError as e:
+                err_msg = f'Cannot auto-create wire {name!r} for port {name!r}: A wire with this name already exists!'
+                raise IdentifierConflictError(err_msg) from e
         return p
 
     def remove_port(self, port: Union[str, Port[Module]]) -> None:
