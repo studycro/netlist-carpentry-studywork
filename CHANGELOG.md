@@ -1,4 +1,4 @@
-# Changelog 0.5.3
+# Changelog 0.5.3 (2026-08-13)
 
 ## ADDED
 - Added `Port.index_groups` property to find parts of ports that share the same wire
