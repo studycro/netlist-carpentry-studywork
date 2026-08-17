@@ -20,9 +20,9 @@ from netlist_carpentry.core.exceptions import (
 from netlist_carpentry.core.netlist_elements.element_path import PortPath, WirePath
 from netlist_carpentry.core.netlist_elements.mixins.metadata import METADATA_DICT, NESTED_DICT
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
-from netlist_carpentry.core.netlist_elements.port_segment import PortSegment
 from netlist_carpentry.core.netlist_elements.wire_segment import WireSegment
 from netlist_carpentry.core.protocols.signals import LogicLevel, SignalOrLogicLevel
+from netlist_carpentry.core.types.connectivity_data import ConnectivityData
 from netlist_carpentry.utils.custom_dict import CustomDict
 from netlist_carpentry.utils.gate_lib_dataclasses import WireParams
 
@@ -231,14 +231,14 @@ class Wire(NetlistElement, BaseModel):
         return not self.signed
 
     @property
-    def connected_port_segments(self) -> Dict[NonNegativeInt, List[PortSegment]]:
+    def connected_port_segments(self) -> ConnectivityData:
         """
         Dictionary mapping wire indices to port segments connected to the respective wire index.
 
         Each key is a wire index (NonNegativeInt), and the value is a list of port segments connected to this wire segment index.
         Accordingly, each port segment from the list is connected to the same wire segment.
         """
-        return {idx: s.port_segments for idx, s in self}
+        return ConnectivityData(base=self, connections={idx: s.port_segments for idx, s in self})
 
     @property
     def fully_connected_ports(self) -> Set[PortPath]:
@@ -417,49 +417,61 @@ class Wire(NetlistElement, BaseModel):
     def set_signed(self, signed: bool) -> None:
         self.parameters.signed = int(signed)
 
-    def driver(self) -> Dict[int, Optional[PortSegment]]:
+    def driver(self) -> ConnectivityData:
         """
-        Returns a dictionary of wire segment indices to lists of driving ports.
+        Returns a dict-like ConnectivityData object of wire segment indices to lists of driving ports (should ever only contain a single element).
 
         The method retrieves the connections that are considered as drivers (which ideally is only one driver) for each wire segment in the wire.
 
         Returns:
-            A dictionary mapping wire segment indices (int) to a list of Port objects
-            representing the driver connections (should be only one) at each index.
-        """
-        return {i: dr[0] if dr else None for i, dr in self._drv_or_lds_connections(get_drv=True).items()}
+            ConnectivityData: A dict-like ConnectivityData object mapping wire segment indices (int) to a list
+                of Port objects representing the driver connections (should be only one) at each index.
 
-    def loads(self) -> Dict[int, List[PortSegment]]:
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> p1 = m.create_port('p1', 'in')
+            >>> p2 = m.create_port('p2', 'out')
+            >>> m.connect(p1, p2, 'someWire')
+            >>> m.wires['someWire'].driver()
+            {0: [PortSegment(m.p1.0, Signal:x)]}
+            >>> m.wires['someWire'].driver().fully_connected_ports
+            {PortPath m.p1}
+            >>> m.wires['someWire'].driver().partially_connected_ports
+            set()
+
+            ```
         """
-        Returns a dictionary of wire segment indices to lists of load ports.
+        return ConnectivityData(base=self, connections={s: self[s].driver() for s in self.segments})
+
+    def loads(self) -> ConnectivityData:
+        """
+        Returns a dict-like ConnectivityData object of wire segment indices to lists of load ports.
 
         The method retrieves the connections that are considered as loads for each wire segment in the wire.
 
         Returns:
-            A dictionary with integer keys representing wire segment indices and values being lists of Port objects,
-            which represent the load ports connected at those indices.
-        """
-        return self._drv_or_lds_connections(get_drv=False)
+            ConnectivityData: A dict-like ConnectivityData object with integer keys representing wire segment indices
+                and values being lists of Port objects, which represent the load ports connected at those indices.
 
-    def _drv_or_lds_connections(self, get_drv: bool) -> Dict[int, List[PortSegment]]:
-        """
-        Retrieves connections for either drivers or loads on the wire.
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> p1 = m.create_port('p1', 'in')
+            >>> p2 = m.create_port('p2', 'out')
+            >>> m.connect(p1, p2, 'someWire')
+            >>> m.wires['someWire'].loads()
+            {0: [PortSegment(m.p2.0, Signal:x)]}
+            >>> m.wires['someWire'].loads().fully_connected_ports
+            {PortPath m.p2}
+            >>> m.wires['someWire'].loads().partially_connected_ports
+            set()
 
-        Args:
-            get_drv (bool): Whether to retrieve driver connections (True) or load connections (False).
-
-        Returns:
-            A dictionary mapping each wire segment index to a list of Port objects.
+            ```
         """
-        con_dict = {}
-        for s in self.segments:
-            if get_drv:
-                # Retrieve driver connections
-                con_dict[s] = self[s].driver()
-            else:
-                # Retrieve load connections
-                con_dict[s] = self[s].loads()
-        return con_dict
+        return ConnectivityData(base=self, connections={s: self[s].loads() for s in self.segments})
 
     def has_no_driver(self, get_mapping: bool = False) -> Union[bool, Dict[int, bool]]:
         """

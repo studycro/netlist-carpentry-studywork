@@ -148,7 +148,7 @@ def test_opt_constant_propagation_dlatch() -> None:
     dl = dlatch(module, 'DLatch', Q=q, D=d)
     dl.tie_port('EN', 0, 0)
     assert opt_constant_propagation(module)
-    assert module.ports['Q'].driver() == {0: None}
+    assert module.ports['Q'].driver() == {0: []}
     assert module.ports['Q'].signal is Signal.FLOATING
     assert module.ports['Q'].signal_array == SignalArray(signals={0: Signal.FLOATING})
     assert 'DLatch' not in module.instances
@@ -157,7 +157,7 @@ def test_opt_constant_propagation_dlatch() -> None:
     dl = dlatch(module, 'DLatch', Q=q, D=d)
     dl.tie_port('EN', 0, 1)
     assert opt_constant_propagation(module)
-    assert module.ports['Q'].driver() == {0: module.ports['D'][0]}
+    assert module.ports['Q'].driver() == {0: [module.ports['D'][0]]}
     assert 'DLatch' not in module.instances
 
     module.disconnect(q)

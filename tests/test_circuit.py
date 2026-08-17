@@ -951,4 +951,3 @@ def test_read() -> None:
 if __name__ == '__main__':
     file_name = os.path.basename(__file__)
     pytest.main(args=['-k', file_name])
-    pytest.main(args=['-k', file_name])

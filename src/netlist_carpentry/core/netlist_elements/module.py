@@ -1844,7 +1844,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
     def show(self, interactive: bool = True) -> Dash: ...
     @overload
     def show(self, interactive: bool = False, figpath: Optional[str] = None, **fwd_params: Optional[object]) -> Optional[Dash]: ...
-    def show(self, interactive: bool = False, figpath: Optional[str] = None, **fwd_params: Optional[object]) -> Optional[Dash]:
+    def show(self, interactive: bool = False, figpath: Optional[str] = None, **fwd_params: Optional[object]) -> Path | Dash | None:
         from netlist_carpentry.core.graph.visualization import CytoscapeGraph, Plotting
 
         if fwd_params is None:
@@ -1853,6 +1853,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         G = self.graph()
         v = Plotting(G)
         v.set_labels_default()
+
         if interactive:
             return CytoscapeGraph(G, v.format).get_dash_graph(**fwd_params)
         v.show(figpath=figpath, **fwd_params)

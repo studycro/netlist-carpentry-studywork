@@ -34,6 +34,7 @@ def test_exports() -> None:
         'WIRE_SEGMENT_X',
         'WIRE_SEGMENT_Z',
         'Circuit',
+        'ConnectivityData',
         'Direction',
         'Instance',
         'Module',
@@ -55,6 +56,7 @@ def test_exports() -> None:
         'run_equiv',
         'run_equiv_miter',
         'run_eqy',
+        'show',
         'write',
     ]
     assert nc.__all__ == target_all

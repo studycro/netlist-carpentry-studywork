@@ -271,6 +271,7 @@ class PrimitiveGate(Instance, BaseModel):
                 Defaults to 0.
 
         Example:
+            ```python
             >>> from netlist_carpentry.utils.gate_factory import and_gate
             >>> module = Module(name='m')
             >>> a = module.create_port('a', 'input', width=6)
@@ -283,6 +284,8 @@ class PrimitiveGate(Instance, BaseModel):
             >>> instance.set('A', 0, [1, 3, 5])
             >>> instance.ports['A'].signal_str
             '0x0x01'
+
+            ```
         """
         if isinstance(idx, int):
             idx = [idx]

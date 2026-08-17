@@ -263,6 +263,7 @@ class Signal(Enum):
             int: The integer value represented by the signal dictionary.
 
         Example:
+            ```python
             >>> signals = {0: Signal.HIGH, 1: Signal.LOW, 2: Signal.HIGH, 3: Signal.HIGH} # LSB: 1011, MSB: 1101 -> 13
             >>> Signal.dict_to_int(signals)
             13
@@ -274,6 +275,8 @@ class Signal(Enum):
             ... except ValueError as e:
             ...     print(e)
             Cannot convert signals to integer or binary value: At least one entry is neither Signal.HIGH nor Signal.LOW, dict is {0: HIGH, 1: UNDEFINED, 2: HIGH}!
+
+            ```
         """
         binary_string = Signal.dict_to_bin(signal_dict, msb_first)
         decimal_value = int(binary_string, 2)
@@ -348,6 +351,7 @@ class Signal(Enum):
             str: The binary value represented by the signal list.
 
         Example:
+            ```python
             >>> signals = [Signal.HIGH, Signal.LOW, Signal.HIGH]
             >>> Signal.to_bin(signals)
             '101'
@@ -357,6 +361,8 @@ class Signal(Enum):
             ... except ValueError as e:
             ...     print(e)
             Cannot convert signals to integer or binary value: At least one entry is neither Signal.HIGH nor Signal.LOW, dict is {0: HIGH, 1: UNDEFINED, 2: HIGH}!
+
+            ```
         """
         # Since enumerate starts from 0, the dict is LSB-first, so 'msb_first' must be inverted
         return Signal.dict_to_bin({i: s for i, s in enumerate(reversed(sig_list))}, msb_first, fixed_width, pad_value)
@@ -386,6 +392,7 @@ class Signal(Enum):
             str: The binary value represented by the signal dictionary.
 
         Example:
+            ```
             >>> signals = {0: Signal.HIGH, 1: Signal.LOW, 2: Signal.HIGH, 3: Signal.HIGH} # LSB: 1011, MSB: 1101 -> 13
             >>> Signal.dict_to_bin(signals)
             '1101'
@@ -397,6 +404,8 @@ class Signal(Enum):
             ... except ValueError as e:
             ...     print(e)
             Cannot convert signals to integer or binary value: At least one entry is neither Signal.HIGH nor Signal.LOW, dict is {0: HIGH, 1: UNDEFINED, 2: HIGH}!
+
+            ```
         """
         if not signal_dict:
             return pad_value

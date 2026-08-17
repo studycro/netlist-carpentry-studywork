@@ -396,11 +396,14 @@ class P2VTransformer:
             str: The Verilog string representation of the port.
 
         Example:
+            ```python
             >>> module = Module(name='m')
             >>> port = module.create_port('port1', 'input', width=8)
             >>> transformer = P2VTransformer()
             >>> transformer.port2v(port)
             'input\twire\t[7:0]\tport1'
+
+            ```
         """
         if port.name in port.parent.wires:
             w = port.parent.wires[port.name]

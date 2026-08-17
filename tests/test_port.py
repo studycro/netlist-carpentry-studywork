@@ -1,10 +1,11 @@
 # mypy: disable-error-code="unreachable,comparison-overlap"
 import os
+from collections.abc import MutableMapping
 
 import pytest
 from pydantic import ValidationError
 
-from netlist_carpentry import WIRE_SEGMENT_X
+from netlist_carpentry import WIRE_SEGMENT_X, ConnectivityData
 from netlist_carpentry.core.circuit import Circuit
 from netlist_carpentry.core.enums.direction import Direction
 from netlist_carpentry.core.enums.element_type import EType
@@ -17,7 +18,7 @@ from netlist_carpentry.core.exceptions import (
     ParentNotFoundError,
     WidthMismatchError,
 )
-from netlist_carpentry.core.netlist_elements.element_path import WirePath, WireSegmentPath
+from netlist_carpentry.core.netlist_elements.element_path import PortPath, WirePath, WireSegmentPath
 from netlist_carpentry.core.netlist_elements.instance import Instance
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
@@ -401,6 +402,24 @@ def test_index_groups(standard_port_in: Port[Instance], standard_port_out: Port[
     assert p.index_groups == {WirePath(raw='m.w'): {4: 0, 5: 1, 6: 2, 7: 3}}
 
 
+def test_connected_ports(standard_port_out: Port[Module]) -> None:
+    target = ConnectivityData(base=standard_port_out, connections={0: [standard_port_out[1]], 1: [standard_port_out[0]]})
+    assert standard_port_out.connected_ports == target
+
+    m = Module(name='m')
+    p1 = m.create_port('p1', 'in', 4)
+    p2 = m.create_port('p2', 'out', 4, offset=4)
+    p3 = m.create_port('p3', 'out', 4, offset=8)
+    m.connect(p1, p2)
+    m.connect(p1, p3)
+    target1 = ConnectivityData(base=p1, connections={0: [p2[4], p3[8]], 1: [p2[5], p3[9]], 2: [p2[6], p3[10]], 3: [p2[7], p3[11]]})
+    target2 = ConnectivityData(base=p2, connections={4: [p1[0], p3[8]], 5: [p1[1], p3[9]], 6: [p1[2], p3[10]], 7: [p1[3], p3[11]]})
+    target3 = ConnectivityData(base=p3, connections={8: [p1[0], p2[4]], 9: [p1[1], p2[5]], 10: [p1[2], p2[6]], 11: [p1[3], p2[7]]})
+    assert p1.connected_ports == target1
+    assert p2.connected_ports == target2
+    assert p3.connected_ports == target3
+
+
 def test_is_connected_1to1() -> None:
     m = Module(name='m')
     w = m.create_wire('w', width=4, offset=4)
@@ -633,9 +652,23 @@ def test_driver() -> None:
     m.connect(in1, out)
 
     dr = out.driver()
-    assert dr == {0: in1[0], 1: in1[1], 2: in1[2], 3: in1[3]}
+    assert isinstance(dr, MutableMapping)
+    assert isinstance(dr, ConnectivityData)
+    assert dr == {0: [in1[0]], 1: [in1[1]], 2: [in1[2]], 3: [in1[3]]}
+    assert dr.connected_ports == {in1.path}
+    assert dr.fully_connected_ports == {in1.path}
+    assert dr.partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert dr.ordered_ports == {in1.path}
+    assert dr.misordered_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert dr.connected_to(in1) is True
+    assert dr.fully_connected_to(in1) is True
+    assert dr.partially_connected_to(in1) is False
+    assert dr.connected_1to1(in1) is True
+    assert dr.connected_in_different_order(in1) is False
 
-    dr_port = out.driver(single=True)
+    match_str = "Parameter 'single' is deprecated and will be removed in v1.0.0. This function now returns ConnectivityData objects."
+    with pytest.warns(DeprecationWarning, match=match_str):
+        dr_port = out.driver(single=True)
     assert dr_port == in1
 
     with pytest.raises(InvalidDirectionError):
@@ -643,39 +676,88 @@ def test_driver() -> None:
 
     in2 = m.create_port('in2', Direction.IN, width=4)
     out2 = m.create_port('out2', Direction.OUT, width=2)
-    assert out2.driver() == {0: None, 1: None}
+    dr = out2.driver()
+    assert dr == {0: [], 1: []}
+    assert dr.connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert dr.indices_with_connections == {0} - {0}  # Funny eyes <=> empty set
+    assert dr.indices_without_connections == {0, 1}
     with pytest.raises(WidthMismatchError):
-        out2.driver(single=True)
+        with pytest.warns(DeprecationWarning, match=match_str):
+            out2.driver(single=True)
 
     m.connect(in2[0], out2[0])
-    assert out2.driver() == {0: in2[0], 1: None}
+    assert out2.driver() == {0: [in2[0]], 1: []}
+    assert out2.driver().indices_with_connections == {0}
+    assert out2.driver().indices_without_connections == {1}
     with pytest.raises(WidthMismatchError):
-        out2.driver(single=True)
+        with pytest.warns(DeprecationWarning, match=match_str):
+            out2.driver(single=True)
 
     m.connect(in2[1], out2[1])
-    assert out2.driver() == {0: in2[0], 1: in2[1]}
+    assert out2.driver() == {0: [in2[0]], 1: [in2[1]]}
     with pytest.raises(WidthMismatchError):
-        out2.driver(single=True)
+        with pytest.warns(DeprecationWarning, match=match_str):
+            out2.driver(single=True)
 
     circuit = Circuit(name='test')
     module = circuit.create_module('test')
     port = module.create_port('input', Direction.IN)
     dff = dffe(module, 'I_dffe', EN=port)
     module.disconnect(port)
-    assert dff.en_port.driver() == {0: None}
+    assert dff.en_port.driver() == {0: []}
+
+    p1 = m.create_port('p1', 'in', width=2)
+    p2 = m.create_port('p2', 'out', width=2, offset=4)  # To make it more interesting
+    m.connect(p1[0], p2[4 + 0])
+    dr = p2.driver()
+    assert dr == {4: [p1[0]], 5: []}
+    assert dr.indices_with_connections == {4}
+    assert dr.indices_without_connections == {5}
 
 
 def test_loads() -> None:
     m = Module(name='m')
     in1 = m.create_port('in1', Direction.IN, width=4)
     out = m.create_port('out', Direction.OUT, width=4)
+    out2 = m.create_port('out2', Direction.OUT, width=4, offset=2)
     m.connect(in1, out)
+    m.connect(in1, out2)
 
-    lds = out.loads()
-    assert lds == {0: [out[0]], 1: [out[1]], 2: [out[2]], 3: [out[3]]}
+    lds = out.loads()  # Returns all other loads (excluding itself)
+    assert isinstance(lds, MutableMapping)
+    assert isinstance(lds, ConnectivityData)
+    assert lds.connections == {0: [out2[2]], 1: [out2[3]], 2: [out2[4]], 3: [out2[5]]}
+    assert lds.fully_connected_ports == {PortPath(raw='m.out2')}
+    assert lds.connected_1to1(out) is False
+    assert lds.connected_1to1(out2) is True
 
-    lds = in1.loads()
-    assert lds == {0: [out[0]], 1: [out[1]], 2: [out[2]], 3: [out[3]]}
+    lds = out2.loads()  # Returns all other loads (excluding itself)
+    assert lds.connections == {2: [out[0]], 3: [out[1]], 4: [out[2]], 5: [out[3]]}
+    assert lds.fully_connected_ports == {PortPath(raw='m.out')}
+    assert lds.connected_1to1(out) is True
+    assert lds.connected_1to1(out2) is False
+
+    lds = in1.loads()  # Returns all total loads
+    assert lds.connections == {0: [out[0], out2[2]], 1: [out[1], out2[3]], 2: [out[2], out2[4]], 3: [out[3], out2[5]]}
+    assert lds.fully_connected_ports == {PortPath(raw='m.out'), PortPath(raw='m.out2')}
+    assert lds.connected_1to1(out) is True
+    assert lds.connected_1to1(out2) is True
+
+    p1 = m.create_port('p1', 'in', width=2)
+    p2 = m.create_port('p2', 'out', width=2, offset=4)  # To make it more interesting
+    m.connect(p1[0], p2[4 + 0])
+    lds = p1.loads()
+    assert lds.connections == {0: [p2[4]], 1: []}
+    assert lds.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert lds.partially_connected_ports == {p2.path}
+    assert lds.indices_with_connections == {0}
+    assert lds.indices_without_connections == {1}
+    lds = p2.loads()  # Loads of a load port: all other loads, excluding itself
+    assert lds.connections == {4: [], 5: []}
+    assert lds.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert lds.partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert lds.indices_with_connections == {0} - {0}  # Funny eyes <=> empty set
+    assert lds.indices_without_connections == {4, 5}
 
 
 def test_set_signed(standard_port_out: Port[Module]) -> None:

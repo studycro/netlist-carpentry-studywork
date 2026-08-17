@@ -16,6 +16,7 @@ from netlist_carpentry.core.exceptions import (
     ParentNotFoundError,
     UnsupportedOperationError,
 )
+from netlist_carpentry.core.netlist_elements.element_path import PortPath
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
 from netlist_carpentry.core.netlist_elements.port import Port
@@ -58,12 +59,16 @@ def test_wire_creation(standard_wire: Wire) -> None:
     assert standard_wire.signal_int is None
     assert len(standard_wire.segments) == 1
     assert standard_wire[1] == standard_wire[1]
-    assert len(standard_wire.connected_port_segments) == 1
-    assert len(standard_wire.connected_port_segments[1]) == 3
-    # assert standard_wire.is_connected is False
-    # assert standard_wire.is_unconnected is False
-    # assert standard_wire.is_undefined is not True
-    # assert standard_wire.is_defined is not None
+    segs = standard_wire.connected_port_segments
+    assert len(segs) == 1
+    assert segs.connected_ports == {PortPath(raw='d.d.p2'), PortPath(raw='c.c.p1'), PortPath(raw='test_module1.p3')}
+    assert segs.base is standard_wire
+    assert segs.connected_ports == {PortPath(raw='d.d.p2'), PortPath(raw='c.c.p1'), PortPath(raw='test_module1.p3')}
+    assert segs.fully_connected_ports == {PortPath(raw='d.d.p2'), PortPath(raw='c.c.p1'), PortPath(raw='test_module1.p3')}
+    assert segs.partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert segs.ordered_ports == {PortPath(raw='d.d.p2'), PortPath(raw='c.c.p1'), PortPath(raw='test_module1.p3')}
+    assert segs.misordered_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert len(segs[1]) == 3
 
     assert standard_wire.can_carry_signal
     standard_wire[1].set_signal('1')
@@ -404,22 +409,36 @@ def test_set_signed(standard_wire: Wire) -> None:
 
 
 def test_wire_driver(standard_wire: Wire) -> None:
-    assert standard_wire.driver() == {1: standard_wire[1].driver()[0]}
+    assert standard_wire.driver() == {1: [standard_wire[1].driver()[0]]}
     w_port = standard_wire.connected_port_segments[1][0]
-    assert standard_wire.driver()[1] == w_port
+    assert standard_wire.driver()[1] == [w_port]
+    assert standard_wire.driver().connected_ports == {w_port.parent.path}
+    assert standard_wire.driver().partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert standard_wire.driver().fully_connected_ports == {w_port.parent.path}
 
     standard_wire[1].port_segments.pop(0)
-    assert standard_wire.driver()[1] is None
+    assert standard_wire.driver()[1] == []
+    assert standard_wire.driver().connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert standard_wire.driver().partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert standard_wire.driver().fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
 
 
 def test_wire_load(standard_wire: Wire) -> None:
+    ps1 = standard_wire[1].port_segments[1]
+    ps2 = standard_wire[1].port_segments[2]
     assert standard_wire.loads() == {1: standard_wire[1].loads()}
-    assert standard_wire.loads() == {1: [standard_wire[1].port_segments[1], standard_wire[1].port_segments[2]]}
+    assert standard_wire.loads() == {1: [ps1, ps2]}
+    assert standard_wire.loads().connected_ports == {ps1.parent.path, ps2.parent.path}
+    assert standard_wire.loads().partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert standard_wire.loads().fully_connected_ports == {ps1.parent.path, ps2.parent.path}
 
     standard_wire[1].port_segments.pop(-1)
     standard_wire[1].port_segments.pop(-1)
 
     assert standard_wire.loads() == {1: []}
+    assert standard_wire.loads().connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert standard_wire.loads().partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+    assert standard_wire.loads().fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
 
 
 def test_has_no_driver(standard_wire: Wire) -> None:
@@ -630,7 +649,7 @@ def test_evaluate(standard_wire: Wire) -> None:
     for p in standard_wire.connected_port_segments[1]:
         assert p.signal == Signal.UNDEFINED
 
-    standard_wire.driver()[1].set_signal(0)
+    standard_wire.driver().get_connected_port().set_signal(0)
     assert standard_wire.signal_array[0] == Signal.UNDEFINED
     assert standard_wire.connected_port_segments[1][0].signal == Signal.LOW
     assert standard_wire.connected_port_segments[1][1].signal == Signal.UNDEFINED

@@ -1,10 +1,57 @@
-# Changelog 0.5.3 (2026-08-13)
+# Changelog 0.6.0
 
 ## ADDED
+- Added `netlist_carpentry.vis` package for graph visualization, with package `dynamic` for ipycytoscape-based interactive graphs and package `styling` for graph formatting
+- Added `Formats` class (similar to previous `Format` class) that holds a bunch of defined formats (`FormatDefinition`) and a mapping containing nodes and their formats
+- Added `FormatDefinition` class which holds the format definition of nodes or edges and can be applied via `Formats.format_nodes()`
+- Added `CytoscapeConfig` class which holds configuration data and other metadata for the ipycytoscape widget that shows the circuit graph in a Jupyter Notebook
+- Added `CytoscapeGraph` class that handles building, formatting, showing and interacting with the module graph
+- Added `InfoBox` widget, where information about nodes (name, type, connections, parameters, etc.) can be displayed
+- Added `netlist_carpentry.vis.show()` (can also be imported directly from `netlist_carpentry`) that takes a module (or module graph) and applies a common style to provide a user-friendly standard implementation of the graph visualization feature
+- Added `ConnectivityData` dataclass (based on `MutableMapping`) to handle connection data (e.g. driver/load stuff), can be imported directly from `netlist_carpentry`
+  - Contains the port or wire whose connectivity is modeled (the base) along with a dictionary of connected port segments (created e.g. by `Port.driver()`, `Port.loads()`, `Wire.driver()` or `Wire.loads()`)
+  - Contains properties to track which ports are fully/partially connected as well as which ports do not follow the same index order of the base port or wire (e.g. through reversed indexing)
+  - Contains a couple of connection-related methods (`fully_connected_to()`, `partially_connected_to()`, ...) taking a `Port` object and returning a bool whether the port is "fully connected"/"partially connected"/... to the base port or wire
+- Added `Port.connected_ports` property that returns a `ConnectivityData` object with all ports somehow connected to this port for each segment
+
+## CHANGED
+- **`Port.driver()` and `Port.loads()` NOW RETURN `ConnectivityData` OBJECTS INSTEAD OF BARE DICTIONARIES**
+  - Since `ConnectivityData` is a `MutableMapping`, normal dictionary methods work as well
+  - Equality checks between `ConnectivityData` and standard dictionaries still work - in this case the base port is ignored, only the connection dictionary is compared
+  - **For `Port.driver()`, the values in the dictionary are no longer `Optional[PortSegment]`, but `List[PortSegment]`, WITH EMPTY LISTS FOR DRIVERLESS PORTS INSTEAD OF `None` AND ONE-ELEMENT `PortSegment` LISTS OTHERWISE**
+  - Migration: If you were accessing objects via `Port.driver()[index]` and expecting `None` or a `PortSegment` object, you can now do `None if not Port.driver()[index] else Port.driver()[index][0]` (the `None` case first; the normal `PortSegment` case in the else branch)
+- **`Wire.driver()` and `Wire.loads()` NOW RETURN `ConnectivityData` OBJECTS INSTEAD OF BARE DICTIONARIES**
+  - Since `ConnectivityData` is a `MutableMapping`, normal dictionary methods work as well
+  - Equality checks between `ConnectivityData` and standard dictionaries still work - in this case the base wire is ignored, only the connection dictionary is compared
+  - **For `Wire.driver()`, the values in the dictionary are no longer `Optional[PortSegment]`, but `List[PortSegment]`, WITH EMPTY LISTS FOR DRIVERLESS WIRES INSTEAD OF `None` AND ONE-ELEMENT `PortSegment` LISTS OTHERWISE**
+  - Migration: If you were accessing objects via `Wire.driver()[index]` and expecting `None` or a `PortSegment` object, you can now do `None if not Wire.driver()[index] else Wire.driver()[index][0]` (the `None` case first; the normal `PortSegment` case in the else branch)
+- Interactive graph visualization no longer uses `Dash Cytoscape`, but `ipycytoscape` instead
+  - The Dash-based approach still exists but is marked as deprecated
+  - Rewrote graph formatting approach, now much easier to handle within Jupyter Notebooks
+  - Simplified node/edge formatting, also added support for CSS variable to create formats (i.e. CSS classes) directly in Python with hinting
+  - Implemented graph interaction for hovering and clicking on nodes and edges
+  - When a node is clicked, it will show its type (input/output for ports, instance type for instances) in italics to make it easier to distinguish from its name
+  - When a node is clicked, additional data (name, type, connections, parameters, etc.) is shown in a small box in the top left corner
+  - When the cursor hovers over an edge, the wire name and bit width are shown (can be locked/released by clicking the edge)
+  - Hovering over a node makes it go transparent to give interaction feedback to the user
+- Updated lots of docstrings, examples and tests
+- Updated and improved skill files
+
+## FIXED
+- Fixed fallthrough issue when reading files with yowasp-yosys, where the file gets generated successfully but the return code is nonzero
+- Fixed a bug in `Ports.loads()` for partially connected ports
+- Fixed a bug in `Ports.loads()` where the port itself was included if the port itself is a load port
+- Fixed issues with the online documentation where formatting breaks for some examples
+
+# Older Versions
+
+## Changelog 0.5.3 (2026-08-13)
+
+### ADDED
 - Added `Port.index_groups` property to find parts of ports that share the same wire
 - Added `Wire.fully_connected_ports` property that returns a set of ports names (str) that are fully connected to this wire
 
-## FIXED
+### FIXED
 - Setting `create_associated_wire=True` for `Module.create_port()` now actually creates the associated wire (wow what a surprise)
 - Fixed hidden bug in `Module.connect()` method, where the wrong index is taken if target and source have different offsets
 - Fixed some issues in the edge creation within the graph building algorithm:
@@ -18,11 +65,9 @@
 - Fixed wire renaming (2): if the target name is a port name, the renaming works; the wire however must then be connected to the port, otherwise, the Verilog write-out would fail
 - Fixed a bunch of typing issues and type hints
 
-## REMOVED
+### REMOVED
 - Removed unused `pmux2mux.v` file, which was previously used as an additional techmap file to resolve priority multiplexers into a tree of standard multiplexers - instead of using this file as a techmap in Yosys, use the `pmuxtree` pass instead
 
-
-# Older Versions
 
 ## Changelog 0.5.2 (2026-07-23)
 
