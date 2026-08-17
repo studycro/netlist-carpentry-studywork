@@ -302,10 +302,10 @@ def test_get_connected_ports(module: Module) -> None:
 def test_basics_for_wires(module: Module) -> None:
     w = module.wires['in1']
     w2 = module.wires['in2']
-    cd = ConnectivityData(base=w, connections=w.connected_port_segments)
+    cd = ConnectivityData(base=w, connections=w.connections)
     assert isinstance(cd, MutableMapping)
     assert cd.base is w
-    assert cd.connections == w.connected_port_segments
+    assert cd.connections == w.connections
     assert cd[0] is cd.connections[0]
 
     cd[1] = []  # To test __setitem__
@@ -324,8 +324,8 @@ def test_basics_for_wires(module: Module) -> None:
     assert repr(cd) == repr(cd.connections)
     assert repr(cd) == '{0: [PortSegment(test_module1.in1.0, Signal:x), PortSegment(test_module1.and_inst.A.0, Signal:x)]}'
 
-    cd2 = ConnectivityData(base=w, connections=w.connected_port_segments)
-    cd3 = ConnectivityData(base=w2, connections=w.connected_port_segments)
+    cd2 = ConnectivityData(base=w, connections=w.connections)
+    cd3 = ConnectivityData(base=w2, connections=w.connections)
     assert cd == cd2
     assert cd == cd2.connections
     assert cd != cd3  # Not the same root port ...
@@ -334,7 +334,7 @@ def test_basics_for_wires(module: Module) -> None:
 
 def test_properties_for_wires(module: Module) -> None:
     w = module.wires['in1']
-    cd = ConnectivityData(base=w, connections=w.connected_port_segments)
+    cd = ConnectivityData(base=w, connections=w.connections)
     assert cd.connections_as_ports == {0: [module.ports['in1'], module.instances['and_inst'].ports['A']]}
     assert cd.indices_without_connections == {0} - {0}  # Funny eyes <=> empty set
     assert cd.indices_with_connections == {0}
@@ -349,7 +349,7 @@ def test_methods_for_wires(module: Module) -> None:
     w = module.wires['in1']
     p = module.ports['in1']
     p_and = module.instances['and_inst'].ports['A']
-    cd = ConnectivityData(base=w, connections=w.connected_port_segments)
+    cd = ConnectivityData(base=w, connections=w.connections)
     assert cd.connected_to(p_and) is True
     assert cd.partially_connected_to(p_and) is False
     assert cd.fully_connected_to(p_and) is True

@@ -1,5 +1,6 @@
 # mypy: disable-error-code="unreachable,comparison-overlap"
 import os
+import re
 
 import pytest
 from pydantic import ValidationError
@@ -59,7 +60,13 @@ def test_wire_creation(standard_wire: Wire) -> None:
     assert standard_wire.signal_int is None
     assert len(standard_wire.segments) == 1
     assert standard_wire[1] == standard_wire[1]
-    segs = standard_wire.connected_port_segments
+    segs = standard_wire.connections
+    match_str = re.escape(
+        "'Wire.connected_port_segments' is deprecated and will be removed in v1.0.0. Use 'Wire.connections' instead!",
+    )
+    with pytest.warns(DeprecationWarning, match=match_str):
+        segs2 = standard_wire.connected_port_segments
+        assert segs == segs2
     assert len(segs) == 1
     assert segs.connected_ports == {PortPath(raw='d.d.p2'), PortPath(raw='c.c.p1'), PortPath(raw='test_module1.p3')}
     assert segs.base is standard_wire
@@ -179,33 +186,34 @@ def test_wire_signed_unsigned(standard_wire: Wire) -> None:
 
 
 def test_fully_connected_ports() -> None:
-    m = Module(name='m')
-    w = m.create_wire('w', width=4)  # No ports connected yet
-    assert w.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
-    p0 = m.create_port(name='p0', direction=Direction.IN, width=1)
-    m.connect(w[0], p0)  # Connect only the first segment of the wire to a port -> not fully connected
-    assert w.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
-    p1 = m.create_port(name='p1', direction=Direction.IN, width=4)
-    m.connect(w, p1)
-    assert w.fully_connected_ports == {p1.path}
-    p2 = m.create_port(name='p2', direction=Direction.OUT, width=5)
-    m.connect(w[0], p2[0])
-    m.connect(w[1], p2[1])
-    m.connect(w[2], p2[2])
-    m.connect(w[3], p2[3])
-    assert w.fully_connected_ports == {p1.path}  # Only p1 is fully connected
-    p3 = m.create_port(name='p3', direction=Direction.OUT, width=4, offset=2)
-    m.connect(w, p3)
-    for i in range(4):
-        assert p3[i + 2] in w.connected_port_segments[i]
-        assert p3[i + 2].ws is w[i]
-    assert w.fully_connected_ports == {p1.path, p3.path}  # p1 and p3 are fully connected, p2 is not
+    with pytest.warns(DeprecationWarning):
+        m = Module(name='m')
+        w = m.create_wire('w', width=4)  # No ports connected yet
+        assert w.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+        p0 = m.create_port(name='p0', direction=Direction.IN, width=1)
+        m.connect(w[0], p0)  # Connect only the first segment of the wire to a port -> not fully connected
+        assert w.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+        p1 = m.create_port(name='p1', direction=Direction.IN, width=4)
+        m.connect(w, p1)
+        assert w.fully_connected_ports == {p1.path}
+        p2 = m.create_port(name='p2', direction=Direction.OUT, width=5)
+        m.connect(w[0], p2[0])
+        m.connect(w[1], p2[1])
+        m.connect(w[2], p2[2])
+        m.connect(w[3], p2[3])
+        assert w.fully_connected_ports == {p1.path}  # Only p1 is fully connected
+        p3 = m.create_port(name='p3', direction=Direction.OUT, width=4, offset=2)
+        m.connect(w, p3)
+        for i in range(4):
+            assert p3[i + 2] in w.connections[i]
+            assert p3[i + 2].ws is w[i]
+        assert w.fully_connected_ports == {p1.path, p3.path}  # p1 and p3 are fully connected, p2 is not
 
-    p4 = m.create_port(name='p4', direction=Direction.OUT, width=4, offset=2)
-    w2 = m.create_wire('w2', width=4, offset=4)
-    assert w2.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
-    m.connect(w2, p4)  # Connect w2 to p4, but w2 is offset=4 and p4 is offset=2, total width is 4 for both, so both are fully connected
-    assert w2.fully_connected_ports == {p4.path}
+        p4 = m.create_port(name='p4', direction=Direction.OUT, width=4, offset=2)
+        w2 = m.create_wire('w2', width=4, offset=4)
+        assert w2.fully_connected_ports == {0} - {0}  # Funny eyes <=> empty set
+        m.connect(w2, p4)  # Connect w2 to p4, but w2 is offset=4 and p4 is offset=2, total width is 4 for both, so both are fully connected
+        assert w2.fully_connected_ports == {p4.path}
 
 
 def test_add_wire_segment(standard_wire: Wire, locked_wire: Wire) -> None:
@@ -410,7 +418,7 @@ def test_set_signed(standard_wire: Wire) -> None:
 
 def test_wire_driver(standard_wire: Wire) -> None:
     assert standard_wire.driver() == {1: [standard_wire[1].driver()[0]]}
-    w_port = standard_wire.connected_port_segments[1][0]
+    w_port = standard_wire.connections[1][0]
     assert standard_wire.driver()[1] == [w_port]
     assert standard_wire.driver().connected_ports == {w_port.parent.path}
     assert standard_wire.driver().partially_connected_ports == {0} - {0}  # Funny eyes <=> empty set
@@ -444,10 +452,10 @@ def test_wire_load(standard_wire: Wire) -> None:
 def test_has_no_driver(standard_wire: Wire) -> None:
     assert not standard_wire.has_no_driver()
     assert standard_wire.has_no_driver(get_mapping=True) == {1: False}
-    standard_wire.connected_port_segments[1].pop(0)
+    standard_wire.connections[1].pop(0)
     assert standard_wire.has_no_driver()
     assert standard_wire.has_no_driver(get_mapping=True) == {1: True}
-    assert len(standard_wire.connected_port_segments[1]) == 2
+    assert len(standard_wire.connections[1]) == 2
 
 
 def test_has_multiple_drivers(standard_wire: Wire) -> None:
@@ -456,30 +464,30 @@ def test_has_multiple_drivers(standard_wire: Wire) -> None:
     _add_multidriver(standard_wire)
     assert standard_wire.has_multiple_drivers()
     assert standard_wire.has_multiple_drivers(get_mapping=True) == {1: True}
-    assert len(standard_wire.connected_port_segments[1]) == 4
+    assert len(standard_wire.connections[1]) == 4
 
 
 def test_has_no_loads(standard_wire: Wire) -> None:
     assert not standard_wire.has_no_loads()
     assert standard_wire.has_no_loads(get_mapping=True) == {1: False}
-    standard_wire.connected_port_segments[1].pop(-1)
-    standard_wire.connected_port_segments[1].pop(-1)
+    standard_wire.connections[1].pop(-1)
+    standard_wire.connections[1].pop(-1)
     assert standard_wire.has_no_loads()
     assert standard_wire.has_no_loads(get_mapping=True) == {1: True}
-    assert len(standard_wire.connected_port_segments[1]) == 1
+    assert len(standard_wire.connections[1]) == 1
 
 
 def test_is_dangling(standard_wire: Wire) -> None:
     assert not standard_wire.is_dangling()
     assert standard_wire.is_dangling(get_mapping=True) == {1: False}
-    p1 = standard_wire.connected_port_segments[1].pop(0)
+    p1 = standard_wire.connections[1].pop(0)
     assert standard_wire.is_dangling()
     assert standard_wire.is_dangling(get_mapping=True) == {1: True}
-    standard_wire.connected_port_segments[1].append(p1)
-    standard_wire.connected_port_segments[1].pop(0)
+    standard_wire.connections[1].append(p1)
+    standard_wire.connections[1].pop(0)
     assert not standard_wire.is_dangling()
     assert standard_wire.is_dangling(get_mapping=True) == {1: False}
-    standard_wire.connected_port_segments[1].pop(0)
+    standard_wire.connections[1].pop(0)
     assert standard_wire.is_dangling()
     assert standard_wire.is_dangling(get_mapping=True) == {1: True}
 
@@ -490,15 +498,15 @@ def test_has_problems(standard_wire: Wire) -> None:
     _add_multidriver(standard_wire)
     assert standard_wire.has_problems()
     assert standard_wire.has_problems(get_mapping=True) == {1: True}
-    p1 = standard_wire.connected_port_segments[1].pop(0)
-    p1 = standard_wire.connected_port_segments[1].pop(-1)
+    p1 = standard_wire.connections[1].pop(0)
+    p1 = standard_wire.connections[1].pop(-1)
     assert standard_wire.has_problems()
     assert standard_wire.has_problems(get_mapping=True) == {1: True}
-    standard_wire.connected_port_segments[1].append(p1)
-    standard_wire.connected_port_segments[1].pop(0)
+    standard_wire.connections[1].append(p1)
+    standard_wire.connections[1].pop(0)
     assert not standard_wire.has_problems()
     assert standard_wire.has_problems(get_mapping=True) == {1: False}
-    standard_wire.connected_port_segments[1].pop(0)
+    standard_wire.connections[1].pop(0)
     assert standard_wire.has_problems()
     assert standard_wire.has_problems(get_mapping=True) == {1: True}
 
@@ -572,9 +580,9 @@ def test_set_name_connections() -> None:
     p2 = m.create_port('p2', direction=Direction.OUT, width=2)
     m.connect(w[0], p1[0])
     m.connect(w[0], p2[0])
-    assert w.connected_port_segments[0][0] == p1[0]
-    assert w.connected_port_segments[0][1] == p2[0]
-    assert w.connected_port_segments[1] == []
+    assert w.connections[0][0] == p1[0]
+    assert w.connections[0][1] == p2[0]
+    assert w.connections[1] == []
     assert w[0].raw_path == 'm.w.0'
     assert w[1].raw_path == 'm.w.1'
     assert p1[0].raw_ws_path == 'm.w.0'
@@ -583,9 +591,9 @@ def test_set_name_connections() -> None:
     assert p2[1].raw_ws_path == ''
 
     w.set_name('new_w')
-    assert w.connected_port_segments[0][0] == p1[0]
-    assert w.connected_port_segments[0][1] == p2[0]
-    assert w.connected_port_segments[1] == []
+    assert w.connections[0][0] == p1[0]
+    assert w.connections[0][1] == p2[0]
+    assert w.connections[1] == []
     assert w[0].raw_path == 'm.new_w.0'
     assert w[1].raw_path == 'm.new_w.1'
     assert p1[0].raw_ws_path == 'm.new_w.0'
@@ -595,10 +603,10 @@ def test_set_name_connections() -> None:
 
     m.connect(w[1], p1[1])
     m.connect(w[1], p2[1])
-    assert w.connected_port_segments[0][0] == p1[0]
-    assert w.connected_port_segments[0][1] == p2[0]
-    assert w.connected_port_segments[1][0] == p1[1]
-    assert w.connected_port_segments[1][1] == p2[1]
+    assert w.connections[0][0] == p1[0]
+    assert w.connections[0][1] == p2[0]
+    assert w.connections[1][0] == p1[1]
+    assert w.connections[1][1] == p2[1]
     assert w[0].raw_path == 'm.new_w.0'
     assert w[1].raw_path == 'm.new_w.1'
     assert p1[0].raw_ws_path == 'm.new_w.0'
@@ -623,8 +631,8 @@ def test_copy_object(standard_wire: Wire) -> None:
         new_w = standard_wire.copy_object('new_wire')
     assert isinstance(new_w, Wire)
     assert new_w.raw_path == 'new_wire'
-    assert new_w.connected_port_segments == {1: []}
-    assert new_w.connected_port_segments != standard_wire.connected_port_segments
+    assert new_w.connections == {1: []}
+    assert new_w.connections != standard_wire.connections
     assert new_w.module is None
     assert new_w.module is standard_wire.module
     assert new_w.width == standard_wire.width
@@ -643,22 +651,22 @@ def test_copy_object(standard_wire: Wire) -> None:
 
 
 def test_evaluate(standard_wire: Wire) -> None:
-    for p in standard_wire.connected_port_segments[1]:
+    for p in standard_wire.connections[1]:
         assert p.signal == Signal.UNDEFINED
     standard_wire.evaluate()
-    for p in standard_wire.connected_port_segments[1]:
+    for p in standard_wire.connections[1]:
         assert p.signal == Signal.UNDEFINED
 
     standard_wire.driver().get_connected_port().set_signal(0)
     assert standard_wire.signal_array[0] == Signal.UNDEFINED
-    assert standard_wire.connected_port_segments[1][0].signal == Signal.LOW
-    assert standard_wire.connected_port_segments[1][1].signal == Signal.UNDEFINED
-    assert standard_wire.connected_port_segments[1][2].signal == Signal.UNDEFINED
+    assert standard_wire.connections[1][0].signal == Signal.LOW
+    assert standard_wire.connections[1][1].signal == Signal.UNDEFINED
+    assert standard_wire.connections[1][2].signal == Signal.UNDEFINED
     standard_wire.evaluate()
     assert standard_wire.signal_array[0] == Signal.LOW
-    assert standard_wire.connected_port_segments[1][0].signal == Signal.LOW
-    assert standard_wire.connected_port_segments[1][1].signal == Signal.LOW
-    assert standard_wire.connected_port_segments[1][2].signal == Signal.LOW
+    assert standard_wire.connections[1][0].signal == Signal.LOW
+    assert standard_wire.connections[1][1].signal == Signal.LOW
+    assert standard_wire.connections[1][2].signal == Signal.LOW
 
     _add_multidriver(standard_wire)
     with pytest.raises(MultipleDriverError):

@@ -309,7 +309,7 @@ class ModuleBaseMixin(NetlistElement):
             )
             equal_instance_connections = all(other.instances[iname].connections == self.instances[iname].connections for iname in self.instances)
             equal_ports = all(other.ports[pname].connected_wire_segments == self.ports[pname].connected_wire_segments for pname in self.ports)
-            equal_wires = all(other.wires[wname].connected_port_segments == self.wires[wname].connected_port_segments for wname in self.wires)
+            equal_wires = all(other.wires[wname].connections == self.wires[wname].connections for wname in self.wires)
             return all([has_all_elements, equal_instance_connections, equal_ports, equal_wires])
         except Exception:
             return False

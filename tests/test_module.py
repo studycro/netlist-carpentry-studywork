@@ -688,7 +688,7 @@ def test_create_port(empty_module: Module, locked_module: Module) -> None:
     assert 'pWithW' in empty_module.wires
     assert empty_module.wires['pWithW'].width == 4
     assert empty_module.wires['pWithW'].offset == 4
-    assert empty_module.wires['pWithW'].fully_connected_ports == {p_with_w.path}
+    assert empty_module.wires['pWithW'].connections.fully_connected_ports == {p_with_w.path}
 
     empty_module.create_wire('alr_created_w')
     match_str = "Cannot auto-create wire 'alr_created_w' for port 'alr_created_w': A wire with this name already exists!"
@@ -936,12 +936,12 @@ def test_connect(standard_module: Module) -> None:
     p = standard_module.ports['test_port2']
     p.segments.clear()
     p.create_port_segment(0)
-    assert w.connected_port_segments == {0: []}
+    assert w.connections == {0: []}
     assert p[0].ws_path == WIRE_SEGMENT_X.path
     assert not p.is_connected_partly
 
     standard_module.connect(w[0], p[0])
-    assert w.connected_port_segments == {0: [p[0]]}
+    assert w.connections == {0: [p[0]]}
     assert p[0].ws_path == w[0].path
 
     standard_module.disconnect(p[0])
@@ -982,7 +982,7 @@ def test_connect(standard_module: Module) -> None:
     w4bit = standard_module.create_wire('w4bit', width=4, offset=2)
     standard_module.connect(w4bit, p4bit)
     assert p4bit.is_connected
-    assert w4bit.connected_port_segments == {2: [p4bit[4]], 3: [p4bit[5]], 4: [p4bit[6]], 5: [p4bit[7]]}
+    assert w4bit.connections == {2: [p4bit[4]], 3: [p4bit[5]], 4: [p4bit[6]], 5: [p4bit[7]]}
     for i in range(4):
         assert p4bit[i + 4].ws_path == w4bit[i + 2].path
 
@@ -994,12 +994,12 @@ def test_connect_full_port_wire(standard_module: Module) -> None:
     p = standard_module.ports['test_port2']
     p.segments.clear()
     p.create_port_segments(8)
-    assert w.connected_port_segments == {0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []}
+    assert w.connections == {0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []}
     assert p[0].ws_path == WIRE_SEGMENT_X.path
     assert not p.is_connected_partly
 
     standard_module.connect(w, p)
-    assert w.connected_port_segments == {0: [p[0]], 1: [p[1]], 2: [p[2]], 3: [p[3]], 4: [p[4]], 5: [p[5]], 6: [p[6]], 7: [p[7]]}
+    assert w.connections == {0: [p[0]], 1: [p[1]], 2: [p[2]], 3: [p[3]], 4: [p[4]], 5: [p[5]], 6: [p[6]], 7: [p[7]]}
     assert p[0].ws_path == w[0].path
     assert p.is_connected
 
@@ -1020,7 +1020,7 @@ def test_connect_inst_port(standard_module: Module) -> None:
     p = inst.ports['test_inst_port']
 
     standard_module.connect(w[0], p[0])
-    assert w.connected_port_segments == {0: [p[0]]}
+    assert w.connections == {0: [p[0]]}
     assert p[0].ws_path == w[0].path
     assert inst.connections[p.name][0] == w[0].path
 
@@ -1143,11 +1143,11 @@ def test_disconnect_inst_port(connected_module: Module) -> None:
     p = inst.ports['A']
     pseg = p[0]
 
-    assert len(w.connected_port_segments[0]) == 2
-    assert pseg in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 2
+    assert pseg in w.connections[0]
     connected_module.disconnect(pseg)
-    assert len(w.connected_port_segments[0]) == 1
-    assert pseg not in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 1
+    assert pseg not in w.connections[0]
     assert pseg.ws_path == WIRE_SEGMENT_X.path
     assert inst.connections[p.name][0] == WIRE_SEGMENT_X.path
 
@@ -1158,11 +1158,11 @@ def test_disconnect_inst_port_path(connected_module: Module) -> None:
     p = inst.ports['A']
     pseg = p[0]
 
-    assert len(w.connected_port_segments[0]) == 2
-    assert pseg in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 2
+    assert pseg in w.connections[0]
     connected_module.disconnect(p.path)
-    assert len(w.connected_port_segments[0]) == 1
-    assert pseg not in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 1
+    assert pseg not in w.connections[0]
     assert pseg.ws_path == WIRE_SEGMENT_X.path
     assert inst.connections[p.name][0] == WIRE_SEGMENT_X.path
 

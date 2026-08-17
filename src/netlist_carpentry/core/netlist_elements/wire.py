@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import builtins
 import warnings
-from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Literal, Optional, Set, Tuple, Union, overload
+from typing import TYPE_CHECKING, Callable, Dict, Generator, Literal, Optional, Set, Tuple, Union, overload
 
 from pydantic import BaseModel, NonNegativeInt, PositiveInt, model_validator
 from typing_extensions import Self
@@ -231,6 +231,10 @@ class Wire(NetlistElement, BaseModel):
         return not self.signed
 
     @property
+    def connections(self) -> ConnectivityData:
+        return ConnectivityData(base=self, connections={idx: s.port_segments for idx, s in self})
+
+    @property
     def connected_port_segments(self) -> ConnectivityData:
         """
         Dictionary mapping wire indices to port segments connected to the respective wire index.
@@ -238,7 +242,12 @@ class Wire(NetlistElement, BaseModel):
         Each key is a wire index (NonNegativeInt), and the value is a list of port segments connected to this wire segment index.
         Accordingly, each port segment from the list is connected to the same wire segment.
         """
-        return ConnectivityData(base=self, connections={idx: s.port_segments for idx, s in self})
+        warnings.warn(
+            "'Wire.connected_port_segments' is deprecated and will be removed in v1.0.0. Use 'Wire.connections' instead!",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.connections
 
     @property
     def fully_connected_ports(self) -> Set[PortPath]:
@@ -250,19 +259,12 @@ class Wire(NetlistElement, BaseModel):
         Any port in this set is guaranteed to be fully connected to this wire, and the wire is guaranteed to be fully connected to any port in this set.
         This conforms to the verilog equivalent of `assign wire = port;` without any slicing.
         """
-        ports = set()
-        candidates: Dict[PortPath, List[NonNegativeInt]] = {}
-        for idx, segs in self.connected_port_segments.items():
-            for seg in segs:
-                if seg.parent.path not in candidates:
-                    candidates[seg.parent.path] = []
-                candidates[seg.parent.path].append(idx)
-        for port_path, indices in candidates.items():
-            port = self.parent.get_from_path(port_path)
-            offset = (port.offset or 0) - (self.offset or 0)
-            if [s - offset for s in port.segments.keys()] == indices and port.width == self.width:  # Must be exact same order and width
-                ports.add(port_path)
-        return ports
+        warnings.warn(
+            "'Wire.fully_connected_ports' is deprecated and will be removed in v1.0.0. Use 'Wire.connections.fully_connected_ports' instead!",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.connections.fully_connected_ports
 
     @model_validator(mode='after')
     def _link_parent(self) -> Self:
@@ -579,7 +581,7 @@ class Wire(NetlistElement, BaseModel):
         return mapping if get_mapping else any_or_all(mapping[k] for k in mapping)
 
     def _set_name_recursively(self, old_name: str, new_name: str) -> None:
-        connected_port_names = {p.parent.name for plist in self.connected_port_segments.values() for p in plist}
+        connected_port_names = {p.parent.name for plist in self.connections.values() for p in plist}
         if old_name in connected_port_names:
             raise UnsupportedOperationError(f'Cannot rename wire {self.raw_path}: Cannot rename a wire that has the same name as a module port!')
         for _, ws in self:
