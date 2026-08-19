@@ -222,6 +222,20 @@ def test_module2v(writer: P2VTransformer, standard_module: Module) -> None:
     assert target_mcode == found_mcode
 
 
+def test_module2v_save_instance_names(writer: P2VTransformer) -> None:
+    target_mcode = 'module m2\n\t(\n\t\tinput\twire\t\t\tp1,\n\t\tinput\twire\t\t\tp2,\n\t\toutput\twire\t\t\tp3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tp3 = p1 & p2;\t// AndGate __myAndInst\nendmodule'
+    m2 = Module(name='m2')
+    p1 = m2.create_port('p1', 'input')
+    p2 = m2.create_port('p2', 'input')
+    p3 = m2.create_port('p3', 'output')
+    inst = m2.create_instance(AndGate, '§myAndInst')
+    m2.connect(p1, inst.ports['A'])
+    m2.connect(p2, inst.ports['B'])
+    m2.connect(inst.ports['Y'], p3, 'p3')
+    found_mcode = writer.module2v(m2, save_instance_names=True)
+    assert target_mcode == found_mcode
+
+
 def test_module2v_simple_wire_names(writer: P2VTransformer, standard_module: Module) -> None:
     from tests.utils import standard_instance_with_ports, wire_1b, wire_4b
 
@@ -313,6 +327,10 @@ def test_instance2v(writer: P2VTransformer, standard_module: Module) -> None:
     standard_module.instances['test_instance'].connect('A', WSPath(raw='test_module1.wireA.0'))
     standard_module.instances['test_instance'].connect('B', WSPath(raw='test_module1.wireB.0'))
     standard_module.instances['test_instance'].connect('Y', WSPath(raw='test_module1.wireC.0'))
+
+    target_mod_inst_str = '\t\tassign\twireC = wireA & wireB;\t// AndGate test_instance\n'
+    found_mod_inst_str = writer.instance2v(standard_module.instances['test_instance'], save_instance_names=True)
+    assert target_mod_inst_str == found_mod_inst_str
 
     target_mod_inst_str = '\t\tassign\twireC = wireA & wireB;\n'
     found_mod_inst_str = writer.instance2v(standard_module.instances['test_instance'])

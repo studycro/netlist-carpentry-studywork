@@ -795,7 +795,9 @@ class Circuit(BaseModel):
         else:
             raise SignalAssignmentError(f'Cannot set signal on element {element.name} of type {element.type}')
 
-    def write(self, output_file_path: Union[str, Path], overwrite: bool = False) -> None:
+    def write(
+        self, output_file_path: Union[str, Path], overwrite: bool = False, max_wname_length: NonNegativeInt = 0, save_instance_names: bool = False
+    ) -> None:
         """
         Writes a Verilog file for this circuit to the given location.
 
@@ -804,11 +806,15 @@ class Circuit(BaseModel):
         Args:
             output_file_path (Union[str, Path]): The path to write the Verilog representation of the circuit to.
             overwrite (bool): Whether to overwrite a file if it already exists. Defaults to False.
+            max_wname_length (NonNegativeInt, optional): The max wire length before the wire name gets shortened into
+                `_net0_`, `_net1_`. Defaults to 0, which disables the obfuscation.
+            save_instance_names (bool, optional): Whether to add the instance name and type. If True, primitives will
+                look like `assign a = b & c; // AndGate myAndGate`. Defaults to False.
         """
         from netlist_carpentry import write
 
         output_path = Path(output_file_path)
-        write(self, output_path, overwrite)
+        write(self, output_path, overwrite, max_wname_length, save_instance_names)
 
     @overload
     def prove_equivalence(
