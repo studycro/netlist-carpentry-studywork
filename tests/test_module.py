@@ -25,7 +25,7 @@ from netlist_carpentry.core.exceptions import (
     PathResolutionError,
     SingleOwnershipError,
     StructureMismatchError,
-    UnsupportedOperationError,
+    VerilogSyntaxError,
     WidthMismatchError,
 )
 from netlist_carpentry.core.graph.module_graph import ModuleGraph
@@ -41,6 +41,7 @@ from netlist_carpentry.core.netlist_elements.instance import Instance
 from netlist_carpentry.core.netlist_elements.mixins.metadata import METADATA_DICT
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.core.netlist_elements.wire_segment import WIRE_SEGMENT_0
+from netlist_carpentry.io.write.py2v import P2VTransformer
 from netlist_carpentry.utils.gate_factory import adff, adffe
 from netlist_carpentry.utils.gate_lib import ADFFE, DFF, AndGate
 
@@ -1172,9 +1173,6 @@ def test_disconnect_module_port(connected_module: Module) -> None:
     w = connected_module.wires['I']
     assert pi.is_connected
     assert w[0].port_segments == [pi[0]]
-    with pytest.raises(UnsupportedOperationError):
-        w.set_name('I2')
-    w.set_name('I')  # To revert partial changes made before the exception was raised
     connected_module.disconnect(pi)
     assert pi.is_unconnected
     assert w[0].port_segments == []
@@ -1185,6 +1183,42 @@ def test_disconnect_module_port(connected_module: Module) -> None:
     connected_module.connect(w2, pi)
     assert pi.is_connected
     assert w2[0].port_segments == [pi[0]]
+
+
+def test_disconnect_module_port_out(connected_module: Module) -> None:
+    p = connected_module.create_port('OUT', 'out', create_associated_wire=True)
+    w = connected_module.wires['OUT']
+    w.set_name('out_new')
+    assert 'assign OUT\t= out_new;' in P2VTransformer()._port2wire_wires2v(connected_module)
+    assert p.is_connected
+    assert not p.is_unconnected
+    assert p.connected_wires == {w.path}
+    w.set_name('OUT')
+    connected_module.disconnect(p)
+    assert not p.is_connected
+    assert p.is_unconnected
+    assert p.connected_wires == {0} - {0}  # Funny eyes <=> empty set
+    match_str = re.escape("Encountered a wire 'test_module1.OUT' that has the same name as a module port, but is not connected fully to said port!")
+    with pytest.raises(VerilogSyntaxError, match=match_str):
+        P2VTransformer().module2v(connected_module)
+
+
+def test_disconnect_module_port_in(connected_module: Module) -> None:
+    p = connected_module.create_port('IN', 'in', create_associated_wire=True)
+    w = connected_module.wires['IN']
+    w.set_name('in_new')
+    assert 'assign in_new\t= IN;' in P2VTransformer()._port2wire_wires2v(connected_module)
+    assert p.is_connected
+    assert not p.is_unconnected
+    assert p.connected_wires == {w.path}
+    w.set_name('IN')
+    connected_module.disconnect(p)
+    assert not p.is_connected
+    assert p.is_unconnected
+    assert p.connected_wires == {0} - {0}  # Funny eyes <=> empty set
+    match_str = re.escape("Encountered a wire 'test_module1.IN' that has the same name as a module port, but is not connected fully to said port!")
+    with pytest.raises(VerilogSyntaxError, match=match_str):
+        P2VTransformer().module2v(connected_module)
 
 
 def test_reconnect(connected_module: Module) -> None:

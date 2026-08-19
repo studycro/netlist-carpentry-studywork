@@ -408,9 +408,8 @@ class P2VTransformer:
         if port.name in port.parent.wires:
             w = port.parent.wires[port.name]
             if any(ws.path not in port.connected_wire_segments.values() for ws in w.segments.values()):
-                raise VerilogSyntaxError(
-                    f'Encountered a wire {w.raw_path} that has the same name as a module port, but is not connected fully to said port!'
-                )
+                err_msg = f'Encountered a wire {w.raw_path!r} that has the same name as a module port, but is not connected fully to said port!'
+                raise VerilogSyntaxError(err_msg)
         net_type = 'wire' if port.name not in port.parent.wires else self._net_type(port.parent.wires[port.name])
         offset = min(port.segments.keys())
         correct_indexing = f'[{port.width + offset - 1}:{offset}]' if port.msb_first else f'[{offset}:{port.width + offset - 1}]'
