@@ -15,6 +15,7 @@
 - Added `Port.connected_ports` property that returns a `ConnectivityData` object with all ports somehow connected to this port for each segment
 
 ## CHANGED
+- `Wire.connected_port_segments` → `Wire.connections` (old property is still present, but emits a deprecation warning now)
 - **`Port.driver()` and `Port.loads()` NOW RETURN `ConnectivityData` OBJECTS INSTEAD OF BARE DICTIONARIES**
   - Since `ConnectivityData` is a `MutableMapping`, normal dictionary methods work as well
   - Equality checks between `ConnectivityData` and standard dictionaries still work - in this case the base port is ignored, only the connection dictionary is compared
@@ -42,6 +43,8 @@
 - Fixed a bug in `Ports.loads()` for partially connected ports
 - Fixed a bug in `Ports.loads()` where the port itself was included if the port itself is a load port
 - Fixed issues with the online documentation where formatting breaks for some examples
+- Fixed an issue when disconnecting module ports from their wire - this now works, and only raises a `VerilogSyntaxError` if the module is written to Verilog while the wire still has the same name as the port
+- Fixed a renaming issue for wires connected to module ports - wires can now be renamed even if they previously had the same name as the module port
 
 # Older Versions
 
