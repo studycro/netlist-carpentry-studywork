@@ -1,6 +1,9 @@
 """Module for handling of hierarchical paths inside a given circuit."""
 
-from typing import List, Optional, Union
+from __future__ import annotations
+
+import warnings
+from typing import List, Optional, Union, overload
 
 from pydantic import BaseModel, NonNegativeInt
 from typing_extensions import Self
@@ -157,7 +160,11 @@ class ElementPath(BaseModel):
         """Whether this path consists of no characters and thus represents an empty string."""
         return self.raw == ''
 
-    def __getitem__(self, index: int) -> str:
+    @overload
+    def __getitem__(self, index: int) -> str: ...
+    @overload
+    def __getitem__(self, index: slice[Optional[int], Optional[int], Optional[int]]) -> List[str]: ...
+    def __getitem__(self, index: Union[int, slice[Optional[int], Optional[int], Optional[int]]]) -> Union[str, List[str]]:
         return self.parts[index]
 
     def __len__(self) -> int:
@@ -276,6 +283,10 @@ class ElementPath(BaseModel):
             list: A list of strings representing the subsequence of elements in the raw path.
 
         """
+        lower_idx_str = '' if not lower_idx else lower_idx
+        upper_idx_str = '' if not upper_idx else upper_idx
+        warn_str = f'{self.__class__.__name__}.get_subseq({lower_idx}, {upper_idx}) is deprecated and will be removed in v1.0.0. Use {self.__class__.__name__}[{lower_idx_str}:{upper_idx_str}] instead!'
+        warnings.warn(warn_str, DeprecationWarning, stacklevel=2)
         return self.parts[lower_idx:upper_idx]
 
     def replace(self, old: str, new: str) -> Self:
