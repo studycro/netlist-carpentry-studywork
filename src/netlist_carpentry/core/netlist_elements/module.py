@@ -998,11 +998,12 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         # Determine the wire name when creating a new wire for an unconnected driver, also check if a wire with that name already exists to avoid conflicts.
         # If the driver is a module port and no explicit name is given, use the port name (so the generated Verilog has `wire <port_name>` matching the port).
         if driver.is_unconnected_partly:
-            if wname is None and driver.is_module_port:
-                wire_name = driver.name
-                wire = self.wires[wire_name] if wire_name in self.wires else self.create_wire(wire_name, width=driver.width)
-            else:
-                wire = self.create_wire(wname, width=driver.width)
+            if wname is None and driver.is_module_port:  # Use Input Port name as wire name first
+                wname = driver.name
+            elif wname is None and load.is_module_port:  # Then use Output Port name as wire name (if applicable)
+                wname = load.name
+            # In any other case, a generic wire is generated, since wname stays None (if it is not connected to a port)
+            wire = self.wires[wname] if wname and wname in self.wires else self.create_wire(wname, width=driver.width)
         else:
             wire = None
 

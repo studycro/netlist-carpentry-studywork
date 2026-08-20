@@ -224,13 +224,13 @@ def test_module2v(writer: P2VTransformer, standard_module: Module) -> None:
 
 
 def test_module2v_save_instance_names(writer: P2VTransformer) -> None:
-    target_mcode = 'module m\n\t(\n\t\tinput\twire\t\t\tD,\n\t\toutput\twire\t\t\tQ,\n\t\tinput\twire\t\t\tCLK\n\t);\n\t// Wire Definitions\n\t\treg \t\t_ncgen_0_;\n\n\t// Primitive Gates and Submodule Instances\n\t\talways @(posedge CLK) begin\t// Start of DFF myDffInst\n\t\t\t_ncgen_0_\t<=\tD;\n\t\tend\t// DFF myDffInst (3 lines)\n\t// Port<->Wire Connections\n\t\tassign Q\t= _ncgen_0_;\n\nendmodule'
+    target_mcode = 'module m\n\t(\n\t\tinput\twire\t\t\tD,\n\t\toutput\treg \t\t\tQ,\n\t\tinput\twire\t\t\tCLK\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\talways @(posedge CLK) begin\t// Start of DFF myDffInst\n\t\t\tQ\t<=\tD;\n\t\tend\t// DFF myDffInst (3 lines)\nendmodule'
     m = Module(name='m')
     dff(m, 'myDffInst', D=m.create_port('D', 'in'), Q=m.create_port('Q', 'out'), CLK=m.create_port('CLK', 'in'))
     found_mcode = writer.module2v(m, save_instance_names=True)
     assert target_mcode == found_mcode
 
-    target_mcode = 'module m\n\t(\n\t\tinput\twire\t\t\tD,\n\t\toutput\twire\t\t\tQ,\n\t\tinput\twire\t\t\tCLK\n\t);\n\t// Wire Definitions\n\t\treg \t\t_ncgen_0_;\n\n\t// Primitive Gates and Submodule Instances\n\t\talways @(posedge CLK) begin\n\t\t\t_ncgen_0_\t<=\tD;\n\t\tend\n\t// Port<->Wire Connections\n\t\tassign Q\t= _ncgen_0_;\n\nendmodule'
+    target_mcode = 'module m\n\t(\n\t\tinput\twire\t\t\tD,\n\t\toutput\treg \t\t\tQ,\n\t\tinput\twire\t\t\tCLK\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\talways @(posedge CLK) begin\n\t\t\tQ\t<=\tD;\n\t\tend\nendmodule'
     m = Module(name='m')
     dff(m, 'myDffInst', D=m.create_port('D', 'in'), Q=m.create_port('Q', 'out'), CLK=m.create_port('CLK', 'in'))
     found_mcode = writer.module2v(m, save_instance_names=False)  # Now without name/type comments
