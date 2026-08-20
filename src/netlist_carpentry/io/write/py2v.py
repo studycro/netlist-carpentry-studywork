@@ -152,9 +152,15 @@ class P2VTransformer:
         return '\n' + ''.join('\t\t' + line + '\n' for line in inst_base.splitlines())
 
     def _instance_primitive2v(self, instance: Instance, save_instance_names: bool) -> str:
-        lines = f' ({len(instance.verilog.splitlines())} lines)' if len(instance.verilog.splitlines()) > 1 else ''
+        line_cnt = len(instance.verilog.splitlines())
+        lines = f' ({line_cnt} lines)' if line_cnt > 1 else ''
         inst_names = f'\t// {instance.__class__.__name__} {instance.name}{lines}\n' if save_instance_names else '\n'
-        return '\n'.join(f'\t\t{line}' for line in instance.verilog.splitlines()) + inst_names
+        if line_cnt > 1 and save_instance_names:
+            start = f'\t// Start of {instance.__class__.__name__} {instance.name}'
+            vcode = '\n'.join([instance.verilog.splitlines()[0] + start, *instance.verilog.splitlines()[1:]])
+        else:
+            vcode = instance.verilog
+        return '\n'.join(f'\t\t{line}' for line in vcode.splitlines()) + inst_names
 
     def _instance_ports2v(self, instance: Instance) -> str:
         ports_strs = []
