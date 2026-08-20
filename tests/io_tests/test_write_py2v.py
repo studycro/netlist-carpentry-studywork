@@ -20,6 +20,7 @@ from netlist_carpentry.core.enums.direction import Direction
 from netlist_carpentry.core.netlist_elements.element_path import WireSegmentPath as WSPath
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.io.write.py2v import P2VTransformer
+from netlist_carpentry.utils.gate_factory import dff
 from netlist_carpentry.utils.gate_lib import AndGate
 from tests.utils import save_results
 
@@ -223,6 +224,12 @@ def test_module2v(writer: P2VTransformer, standard_module: Module) -> None:
 
 
 def test_module2v_save_instance_names(writer: P2VTransformer) -> None:
+    target_mcode = 'module m\n\t(\n\t\tinput\twire\t\t\tD,\n\t\toutput\twire\t\t\tQ,\n\t\tinput\twire\t\t\tCLK\n\t);\n\t// Wire Definitions\n\t\treg \t\t_ncgen_0_;\n\n\t// Primitive Gates and Submodule Instances\n\t\talways @(posedge CLK) begin\n\t\t\t_ncgen_0_\t<=\tD;\n\t\tend\t// DFF myDffInst (3 lines)\n\t// Port<->Wire Connections\n\t\tassign Q\t= _ncgen_0_;\n\nendmodule'
+    m = Module(name='m')
+    dff(m, 'myDffInst', D=m.create_port('D', 'in'), Q=m.create_port('Q', 'out'), CLK=m.create_port('CLK', 'in'))
+    found_mcode = writer.module2v(m, save_instance_names=True)
+    assert target_mcode == found_mcode
+
     target_mcode = 'module m2\n\t(\n\t\tinput\twire\t\t\tp1,\n\t\tinput\twire\t\t\tp2,\n\t\toutput\twire\t\t\tp3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tp3 = p1 & p2;\t// AndGate __myAndInst\nendmodule'
     m2 = Module(name='m2')
     p1 = m2.create_port('p1', 'input')
