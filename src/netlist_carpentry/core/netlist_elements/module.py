@@ -913,20 +913,21 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         """Connect two segments via a wire segment. If the source is unconnected, a new wire is created. Otherwise the source's existing wire is reused."""
         # Determine the wire segment: new if source port is unconnected, else reuse
         if isinstance(source_seg, Port):
-            source_seg = source_seg[0]
+            source_seg = source_seg[source_seg.offset or 0]
         if isinstance(target_seg, Port):
-            target_seg = target_seg[0]
-        if isinstance(source_seg, PortSegment) and source_seg.is_unconnected:
+            target_seg = target_seg[target_seg.offset or 0]
+        if source_seg.is_unconnected:
             # If the source is a module port segment and no explicit name is given, use the parent port name for the wire (so generated Verilog matches).
             # Check if a wire with that name already exists to avoid conflicts when connecting multiple segments of the same port.
-            if wname is None and source_seg.parent.is_module_port:
-                wire_name = source_seg.parent.name
-                if wire_name in self.wires:
-                    wire_seg = self.wires[wire_name][source_seg.index]
-                else:
-                    wire_seg = self.create_wire(wire_name, width=source_seg.parent.width)[source_seg.index]
+            if wname is None and source_seg.parent.is_module_port:  # Use Input Port name as wire name first
+                wname = source_seg.parent.name
+            elif wname is None and target_seg.parent.is_module_port:  # Then use Output Port name as wire name (if applicable)
+                wname = target_seg.parent.name
+            if wname is not None and wname in self.wires:
+                wire_seg = self.wires[wname][source_seg.index]
             else:
-                wire_seg = self.create_wire(wname)[0]
+                # In any other case, a generic wire is generated, since wname stays None (if it is not connected to a port)
+                wire_seg = self.create_wire(wname, width=source_seg.parent.width, offset=source_seg.parent.offset or 0)[source_seg.index]
         else:
             wire_seg = source_seg.ws
 
@@ -1003,7 +1004,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
             elif wname is None and load.is_module_port:  # Then use Output Port name as wire name (if applicable)
                 wname = load.name
             # In any other case, a generic wire is generated, since wname stays None (if it is not connected to a port)
-            wire = self.wires[wname] if wname and wname in self.wires else self.create_wire(wname, width=driver.width)
+            wire = self.wires[wname] if wname and wname in self.wires else self.create_wire(wname, width=driver.width, offset=driver.offset or 0)
         else:
             wire = None
 

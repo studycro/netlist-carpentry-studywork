@@ -1057,6 +1057,37 @@ def test_connect_module_port() -> None:
     assert P2VTransformer().module2v(m, save_instance_names=True) == target_vcode
 
 
+def test_connect_module_port_segments() -> None:
+    m = Module(name='m')
+    p1 = m.create_port('P1', 'in')
+    p2 = m.create_port('P2', 'in', offset=2)
+    p3 = m.create_port('P3', 'out', offset=4)
+    inst = m.create_instance(AndGate, 'and_inst')
+    m.connect(p1[0], inst.ports['A'][0])
+    m.connect(p2[2], inst.ports['B'][0])
+    m.connect(inst.ports['Y'][0], p3[4])
+
+    assert p1.connected_wires == {WirePath(raw='m.P1')}
+    assert p2.connected_wires == {WirePath(raw='m.P2')}
+    assert p3.connected_wires == {WirePath(raw='m.P3')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t\t\tP1,\n\t\tinput\twire\t\t\tP2,\n\t\toutput\twire\t\t\tP3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tP3 = P1 & P2;\nendmodule'
+    assert P2VTransformer().module2v(m) == target_vcode
+
+    m = Module(name='m')
+    p4 = m.create_port('P4', 'in')
+    p5 = m.create_port('P5', 'in', offset=2)
+    p6 = m.create_port('P6', 'out', offset=4)
+    inst = m.create_instance(AndGate, 'and_inst2')
+    m.connect(p4[0], inst.ports['A'], new_wire_name='ABC')  # Now with different wire names
+    m.connect(p5, inst.ports['B'][0], new_wire_name='DEF')
+    m.connect(inst.ports['Y'][0], p6[4], new_wire_name='GHI')
+    assert p4.connected_wires == {WirePath(raw='m.ABC')}
+    assert p5.connected_wires == {WirePath(raw='m.DEF')}
+    assert p6.connected_wires == {WirePath(raw='m.GHI')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t\t\tP4,\n\t\tinput\twire\t\t\tP5,\n\t\toutput\twire\t\t\tP6\n\t);\n\t// Wire Definitions\n\t\twire\t\tABC;\n\t\twire\t\tDEF;\n\t\twire\t\tGHI;\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tGHI = ABC & DEF;\t// AndGate and_inst2\n\t// Port<->Wire Connections\n\t\tassign ABC\t= P4;\n\t\tassign DEF\t= P5;\n\t\tassign P6\t= GHI;\n\nendmodule'
+    assert P2VTransformer().module2v(m, save_instance_names=True) == target_vcode
+
+
 def test_connect_ports(standard_module: Module) -> None:
     p2 = standard_module.create_port('test_port2', direction=Dir.IN, width=8)
     p3 = standard_module.create_port('test_port3', direction=Dir.OUT, width=8, offset=1)
