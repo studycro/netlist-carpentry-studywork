@@ -13,6 +13,10 @@
   - Contains properties to track which ports are fully/partially connected as well as which ports do not follow the same index order of the base port or wire (e.g. through reversed indexing)
   - Contains a couple of connection-related methods (`fully_connected_to()`, `partially_connected_to()`, ...) taking a `Port` object and returning a bool whether the port is "fully connected"/"partially connected"/... to the base port or wire
 - Added `Port.connected_ports` property that returns a `ConnectivityData` object with all ports somehow connected to this port for each segment
+- Added `save_instance_names` parameter to Verilog `write` functions (e.g. `netlist_carpentry.write()`, `Circuit.write()`) that adds a comment with the instance type and name for primitive gates
+  - If `save_instance_names` is `False` (default), everything stays as it currently is, otherwise a comment is added to every primitive gate in the Verilog output
+  - For one-line primitive gates that, the output now looks like this: `assign a = b & c; // AndGate myAndInstance`
+  - For multiline gates (e.g. `@always` blocks), the header receives a comment `// Start of DFF myDffInstance` and the ending line receives a note in the form of `// DFF myInstance (5 lines)`
 
 ## CHANGED
 - `Wire.connected_port_segments` → `Wire.connections` (old property is still present, but emits a deprecation warning now)
