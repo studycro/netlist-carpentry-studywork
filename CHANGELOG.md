@@ -54,6 +54,8 @@
   - `Port`, slicing port segments
   - `Wire`, slicing wire segments
   - `SignalArray`, slicing signals
+- Fixed issue in `Module.connect()` method when connecting something to a module output port (or port segment), where the wire receives a generic name `_ncgen_{idx}_` but the output port name should be used instead
+- Fixed some other corner cases in `Module.connect()`, where indexing sometimes breaks if segments are connected bit-by-bit
 
 # Older Versions
 

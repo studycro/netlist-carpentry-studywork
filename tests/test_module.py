@@ -1066,11 +1066,25 @@ def test_connect_module_port_segments() -> None:
     m.connect(p1[0], inst.ports['A'][0])
     m.connect(p2[2], inst.ports['B'][0])
     m.connect(inst.ports['Y'][0], p3[4])
-
     assert p1.connected_wires == {WirePath(raw='m.P1')}
     assert p2.connected_wires == {WirePath(raw='m.P2')}
     assert p3.connected_wires == {WirePath(raw='m.P3')}
     target_vcode = 'module m\n\t(\n\t\tinput\twire\t\t\tP1,\n\t\tinput\twire\t\t\tP2,\n\t\toutput\twire\t\t\tP3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tP3 = P1 & P2;\nendmodule'
+    assert P2VTransformer().module2v(m) == target_vcode
+
+    p1.create_port_segment(1)
+    p2.create_port_segment(3)
+    p3.create_port_segment(5)
+    inst.ports['A'].create_port_segment(1)
+    inst.ports['B'].create_port_segment(1)
+    inst.ports['Y'].create_port_segment(1)
+    m.connect(p1[1], inst.ports['A'][1])
+    m.connect(p2[3], inst.ports['B'][1])
+    m.connect(inst.ports['Y'][1], p3[5])
+    assert p1.connected_wires == {WirePath(raw='m.P1')}
+    assert p2.connected_wires == {WirePath(raw='m.P2')}
+    assert p3.connected_wires == {WirePath(raw='m.P3')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t[1:0]\tP1,\n\t\tinput\twire\t[3:2]\tP2,\n\t\toutput\twire\t[5:4]\tP3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tP3 = P1 & P2;\nendmodule'
     assert P2VTransformer().module2v(m) == target_vcode
 
     m = Module(name='m')

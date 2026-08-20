@@ -919,15 +919,20 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         if source_seg.is_unconnected:
             # If the source is a module port segment and no explicit name is given, use the parent port name for the wire (so generated Verilog matches).
             # Check if a wire with that name already exists to avoid conflicts when connecting multiple segments of the same port.
+            use_target_seg = False
             if wname is None and source_seg.parent.is_module_port:  # Use Input Port name as wire name first
                 wname = source_seg.parent.name
             elif wname is None and target_seg.parent.is_module_port:  # Then use Output Port name as wire name (if applicable)
                 wname = target_seg.parent.name
+                use_target_seg = True
+            seg = target_seg if use_target_seg else source_seg
             if wname is not None and wname in self.wires:
-                wire_seg = self.wires[wname][source_seg.index]
+                if seg.index not in self.wires[wname].segments:
+                    self.wires[wname].create_wire_segment(seg.index)
+                wire_seg = self.wires[wname][seg.index]
             else:
                 # In any other case, a generic wire is generated, since wname stays None (if it is not connected to a port)
-                wire_seg = self.create_wire(wname, width=source_seg.parent.width, offset=source_seg.parent.offset or 0)[source_seg.index]
+                wire_seg = self.create_wire(wname, width=seg.parent.width, offset=seg.parent.offset or 0)[seg.index]
         else:
             wire_seg = source_seg.ws
 
