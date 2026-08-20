@@ -61,17 +61,23 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
     """Whether this port is MSB (most significant bit) first or not"""
     module_or_instance: Optional[T_PARENT]
 
-    def __getitem__(self, index: int) -> PortSegment:
+    @overload
+    def __getitem__(self, index: int) -> PortSegment: ...
+    @overload
+    def __getitem__(self, index: slice[Optional[int], Optional[int], Optional[int]]) -> List[PortSegment]: ...
+    def __getitem__(self, index: Union[int, slice[Optional[int], Optional[int], Optional[int]]]) -> Union[PortSegment, List[PortSegment]]:
         """
         Allows subscripting of a Port object to access its port segments directly.
 
         This is mainly for convenience, to use Port[i] instead of Port.segments[i].
 
         Args:
-            index (int): The index of the desired port segment.
+            index (int | slice[Optional[int], Optional[int], Optional[int]]): The index of the desired port segment.
+                Can also be a slice (e.g. `[0:3]`).
 
         Returns:
-            PortSegment: The port segment at the specified index.
+            Union[PortSegment, List[PortSegment]]: The port segment at the specified index.
+                If a slice (e.g. `[0:3]`) is given, returns a list of port segments instead.
 
         Example:
             ```python
@@ -82,12 +88,18 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
             PortSegment(m.p.0, Signal:x)
             >>> p[3]
             PortSegment(m.p.3, Signal:x)
+            >>> p[1:-1]
+            [PortSegment(m.p.1, Signal:x), PortSegment(m.p.2, Signal:x)]
+            >>> p[69:420]
+            []
 
             ```
         """
-        if index in self.segments:
-            return self.segments[index]
-        raise IndexError(f'Port {self.raw_path} does not have a segment {index}!')
+        if isinstance(index, int):
+            if index in self.segments:
+                return self.segments[index]
+            raise IndexError(f'Port {self.raw_path} does not have a segment {index}!')
+        return [self.segments[i] for i in range(*index.indices(len(self.segments)))]
 
     def __len__(self) -> int:
         """Returns the number of port segments in this port.

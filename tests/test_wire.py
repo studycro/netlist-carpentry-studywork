@@ -81,6 +81,17 @@ def test_wire_creation(standard_wire: Wire) -> None:
     assert standard_wire.signal == Signal.HIGH
     assert standard_wire.signal_array == SignalArray(signals={0: Signal.HIGH})
 
+    m = Module(name='m')
+    w = m.create_wire('w', width=2)
+    assert w[:] == [w[0], w[1]]
+    assert w[0:-1] == [w[0]]
+    assert w[:1] == [w[0]]
+    assert w[0:2] == [w[0], w[1]]
+    assert w[1:2] == [w[1]]
+    assert w[::2] == [w[0]]
+    assert w[1::2] == [w[1]]
+    assert w[3:5] == []
+
 
 def test_wire_len(standard_wire: Wire) -> None:
     assert len(standard_wire) == 1

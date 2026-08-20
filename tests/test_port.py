@@ -70,6 +70,14 @@ def test_port_creation(standard_port_in: Port[Instance], standard_port_out: Port
     assert standard_port_out.direction == Direction.OUT
     assert not standard_port_out.is_instance_port
     assert standard_port_out.is_module_port
+    assert standard_port_out[:] == [standard_port_out[0], standard_port_out[1]]
+    assert standard_port_out[0:-1] == [standard_port_out[0]]
+    assert standard_port_out[:1] == [standard_port_out[0]]
+    assert standard_port_out[0:2] == [standard_port_out[0], standard_port_out[1]]
+    assert standard_port_out[1:2] == [standard_port_out[1]]
+    assert standard_port_out[::2] == [standard_port_out[0]]
+    assert standard_port_out[1::2] == [standard_port_out[1]]
+    assert standard_port_out[3:5] == []
     assert standard_port_out[0].path.raw == 'test_module1.test_port2.0'
     assert standard_port_out[1].path.raw == 'test_module1.test_port2.1'
     assert standard_port_out[0].hierarchy_level == 2
