@@ -30,18 +30,14 @@ def test_default() -> None:
 def test_yosys_executable() -> None:
     rc = ReadConfig(files=[Path('tests/files/simpleAdder.v')])
     assert rc.yosys_executable == 'yosys'
-    assert rc.shell_script()[0] == 'bash'
-    assert rc.shell_script()[1] == '-c'
-    assert rc.shell_script()[2].splitlines()[0] == 'set -e'
-    assert rc.shell_script()[2].splitlines()[1] == ''
-    assert rc.shell_script()[2].splitlines()[2] == 'yosys  -p "'
+    assert rc.shell_script()[0].splitlines()[0] == 'set -e'
+    assert rc.shell_script()[0].splitlines()[1] == ''
+    assert rc.shell_script()[0].splitlines()[2] == 'yosys  -p "'
     tmp = CFG.yosys_executable
     CFG.yosys_executable = 'yowasp-yosys'
     rc = ReadConfig(files=[Path('tests/files/simpleAdder.v')])
     assert rc.yosys_executable == 'yowasp-yosys'
-    assert rc.shell_script()[0] == 'bash'
-    assert rc.shell_script()[1] == '-c'
-    assert rc.shell_script()[2].splitlines()[2] == 'yowasp-yosys  -p "'
+    assert rc.shell_script()[0].splitlines()[2] == 'yowasp-yosys  -p "'
     CFG.yosys_executable = tmp
 
 
@@ -176,9 +172,7 @@ def test_yosys_commands() -> None:
 
 def test_shell_script() -> None:
     rc = ReadConfig(files=[Path('tests/files/simpleAdder.v')], output=Path('a/b/c.json'))
-    found_cmds = rc.shell_script()[0] == 'bash'
-    found_cmds = rc.shell_script()[1] == '-c'
-    found_cmds = rc.shell_script()[2].splitlines()
+    found_cmds = rc.shell_script()[0].splitlines()
     # In bash script, everything is 2 (resp. 3) lines further down because of the script's startup stuff
     assert found_cmds[0] == 'set -e'
     assert found_cmds[1] == ''
@@ -203,7 +197,7 @@ def test_shell_script_write() -> None:
     script_path = Path('tests/files/gen/shell_script.sh')
     if script_path.exists():
         os.remove(script_path)
-    found_cmds = rc.shell_script(script_path)[2].splitlines()
+    found_cmds = rc.shell_script(script_path)[0].splitlines()
     assert script_path.exists()
     with open(script_path) as f:
         file_cmds = f.read()
@@ -234,7 +228,7 @@ def test_shell_script_write() -> None:
 
     tmp = CFG.yosys_executable
     CFG.yosys_executable = 'yowasp-yosys'
-    found_cmds = rc.shell_script()[2].splitlines()
+    found_cmds = rc.shell_script()[0].splitlines()
     CFG.yosys_executable = tmp
     assert found_cmds[2] == 'yowasp-yosys  -p "'
 

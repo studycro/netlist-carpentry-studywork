@@ -152,13 +152,11 @@ class CytoscapeGraph(BaseModel):
         if node_id in self._node_map:
             return self._node_map[node_id]
         if node_id in self.get_node_map():
-            print('Rebuilding nodes')
             self._node_map = self.get_node_map()
             return self.get_node(node_id)
         raise ObjectNotFoundError(f'No node with id {node_id!r} found!')
 
     def get_node_element(self, node_id: str) -> Union[Instance, Port[Module]]:
-        print('Getting node')
         if node_id not in self.module_graph.nodes:
             raise ObjectNotFoundError(f'No node with id {node_id!r} found!')
         return self.module_graph.get_data(node_id, 'ndata')
@@ -181,7 +179,6 @@ class CytoscapeGraph(BaseModel):
         if wire_name in self._edge_map:
             return self._edge_map[wire_name]
         if wire_name in self.get_edge_map():
-            print('Rebuilding edges')
             self._edge_map = self.get_edge_map()
             return self.get_edge(wire_name)
         raise ObjectNotFoundError(f'No edge for wire name {wire_name!r} found!')

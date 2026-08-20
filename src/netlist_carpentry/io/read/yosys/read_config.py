@@ -203,7 +203,7 @@ opt; clean
             shell_cmd = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script]
         else:
             # Linux/macOS → bash
-            shell_cmd = ['bash', '-c', script]
+            shell_cmd = [script]
         if path is not None:
             with open(path, 'w') as f:
                 f.write(init + script)
