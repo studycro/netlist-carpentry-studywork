@@ -25,6 +25,12 @@ def test_basics(module: Module) -> None:
     assert cd.base is p
     assert cd.connections == p.loads()
     assert cd[0] is cd.connections[0]
+    assert cd[:] == [cd.connections[0]]
+    assert cd[:-1] == []
+    assert cd[1:] == []
+    assert cd[-69:420] == [cd.connections[0]]
+    assert cd[::2] == [cd.connections[0]]
+    assert cd[1::2] == []
 
     cd[1] = []  # To test __setitem__
     assert 1 in cd

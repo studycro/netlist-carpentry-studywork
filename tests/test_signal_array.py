@@ -48,6 +48,18 @@ def test_basics() -> None:
     assert int(sa) == 5
     assert str(~sa) == '010'
 
+    assert sa[:] == [Signal.HIGH, Signal.LOW, Signal.HIGH]  # Reversed order -> MSB first
+    assert sa[0:2] == [Signal.HIGH, Signal.LOW]
+    assert sa[0:3] == [Signal.HIGH, Signal.LOW, Signal.HIGH]
+    assert sa[0:4] == [Signal.HIGH, Signal.LOW, Signal.HIGH]
+    assert sa[:1] == [Signal.HIGH]
+    assert sa[:-1] == [Signal.HIGH, Signal.LOW]
+    assert sa[1:] == [Signal.LOW, Signal.HIGH]
+    assert sa[-69:420] == [Signal.HIGH, Signal.LOW, Signal.HIGH]
+    assert sa[::2] == [Signal.HIGH, Signal.HIGH]
+    assert sa[1::2] == [Signal.LOW]
+    assert sa[69:420] == []
+
 
 def test_iter() -> None:
     sa = SignalArray.create('1010')

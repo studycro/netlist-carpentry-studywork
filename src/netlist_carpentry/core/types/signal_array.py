@@ -1,4 +1,6 @@
-from typing import Dict, Generator, ItemsView, KeysView, List, Optional, Union, ValuesView
+from __future__ import annotations
+
+from typing import Dict, Generator, ItemsView, KeysView, List, Optional, Union, ValuesView, overload
 
 from pydantic import BaseModel, NonNegativeInt, PositiveInt
 
@@ -49,10 +51,16 @@ class SignalArray(BaseModel):
         SignalArray.fill_gaps(self.signals, self.default_fill)
         return super().model_post_init(context)
 
-    def __getitem__(self, key: NonNegativeInt) -> Signal:
-        if key in self.signals:
-            return self.signals[key]
-        raise KeyError(f'No index {key} in Signal array {str(self)!r} (size {self.size})!')
+    @overload
+    def __getitem__(self, key: NonNegativeInt) -> Signal: ...
+    @overload
+    def __getitem__(self, key: slice[Optional[int], Optional[int], Optional[int]]) -> List[Signal]: ...
+    def __getitem__(self, key: Union[NonNegativeInt, slice[Optional[int], Optional[int], Optional[int]]]) -> Union[Signal, List[Signal]]:
+        if isinstance(key, int):
+            if key in self.signals:
+                return self.signals[key]
+            raise KeyError(f'No index {key} in Signal array {str(self)!r} (size {self.size})!')
+        return [self.signals[i] for i in range(*key.indices(len(self.signals)))]
 
     def __setitem__(self, key: NonNegativeInt, value: Signal) -> None:
         self.signals[key] = value

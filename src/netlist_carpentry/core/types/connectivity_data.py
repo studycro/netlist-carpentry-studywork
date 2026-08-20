@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator, MutableMapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union, overload
 
 from pydantic import NonNegativeInt
+from typing_extensions import TypeAlias
 
 from netlist_carpentry.core.exceptions import StructureMismatchError, WidthMismatchError
 from netlist_carpentry.core.netlist_elements.element_path import PortPath
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
     from netlist_carpentry import Instance, Module, Port, Wire
 
     PORT = Union[Port[Instance], Port[Module]]
+
+Slice: TypeAlias = 'slice[Optional[int], Optional[int], Optional[int]]'
 
 
 @dataclass
@@ -38,8 +41,14 @@ class ConnectivityData(MutableMapping[NonNegativeInt, List[PortSegment]]):
     Each index of the port or wire is mapped to a list of port segments (i.e. the associated connections).
     """
 
-    def __getitem__(self, key: NonNegativeInt) -> List[PortSegment]:
-        return self.connections[key]
+    @overload
+    def __getitem__(self, key: NonNegativeInt) -> List[PortSegment]: ...
+    @overload
+    def __getitem__(self, key: Slice) -> List[List[PortSegment]]: ...
+    def __getitem__(self, key: Union[NonNegativeInt, Slice]) -> Union[List[PortSegment], List[List[PortSegment]]]:
+        if isinstance(key, int):
+            return self.connections[key]
+        return [self.connections[i] for i in range(*key.indices(len(self)))]
 
     def __setitem__(self, key: NonNegativeInt, value: List[PortSegment]) -> None:
         self.connections[key] = value
