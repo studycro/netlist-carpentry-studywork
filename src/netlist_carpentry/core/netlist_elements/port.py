@@ -99,7 +99,7 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
             if index in self.segments:
                 return self.segments[index]
             raise IndexError(f'Port {self.raw_path} does not have a segment {index}!')
-        return [self.segments[i] for i in range(*index.indices(len(self.segments)))]
+        return [self.segments[i] for i in range(*index.indices(len(self)))]
 
     def __len__(self) -> int:
         """Returns the number of port segments in this port.

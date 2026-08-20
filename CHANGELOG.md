@@ -49,6 +49,11 @@
 - Fixed issues with the online documentation where formatting breaks for some examples
 - Fixed an issue when disconnecting module ports from their wire - this now works, and only raises a `VerilogSyntaxError` if the module is written to Verilog while the wire still has the same name as the port
 - Fixed a renaming issue for wires connected to module ports - wires can now be renamed even if they previously had the same name as the module port
+- Fixed slicing for several classes that are based on lists or dictionaries, such that `object[0:3]`/`object[1::2]`/etc. is possible - fixed classes include:
+  - `ElementPath` (and subclasses), slicing the path parts - method `ElementPath.get_subseq()` is now deprecated, which mimicked the slicing functionality
+  - `Port`, slicing port segments
+  - `Wire`, slicing wire segments
+  - `SignalArray`, slicing signals
 
 # Older Versions
 

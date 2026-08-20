@@ -84,7 +84,7 @@ class Wire(NetlistElement, BaseModel):
             if index in self.segments:
                 return self.segments[index]
             raise IndexError(f'Wire {self.raw_path} does not have a segment {index}!')
-        return [self.segments[i] for i in range(*index.indices(len(self.segments)))]
+        return [self.segments[i] for i in range(*index.indices(len(self)))]
 
     def __len__(self) -> int:
         return len(self.segments)
