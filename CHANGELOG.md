@@ -1,4 +1,4 @@
-# Changelog 0.6.0
+# Changelog 0.6.0 (2026-09-07)
 
 ## ADDED
 - Added `netlist_carpentry.vis` package for graph visualization, with package `dynamic` for ipycytoscape-based interactive graphs and package `styling` for graph formatting
@@ -56,6 +56,8 @@
   - `SignalArray`, slicing signals
 - Fixed issue in `Module.connect()` method when connecting something to a module output port (or port segment), where the wire receives a generic name `_ncgen_{idx}_` but the output port name should be used instead
 - Fixed some other corner cases in `Module.connect()`, where indexing sometimes breaks if segments are connected bit-by-bit
+- Fixed output of subprocesses, where previously all environment variables and functions get dumped before the actual script output
+
 
 # Older Versions
 
