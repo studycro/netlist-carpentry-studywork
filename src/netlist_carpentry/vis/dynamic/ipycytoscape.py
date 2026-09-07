@@ -20,9 +20,14 @@ cssDict = Dict[str, Dict[str, str]]
 
 
 class GraphDataDict(TypedDict):
+    """Format of a dictionary containing graph data."""
+
     ntype: Literal['PORT', 'INSTANCE']
+    """The node type. Either `PORT` or `Instance`."""
     nsubtype: str
+    """The node type, but more specific. `input`/`output` for ports, and the instance type for instances."""
     ndata: Union[Port[Module], Instance]
+    """The actual circuit object modeled by the node."""
 
 
 class CytoscapeGraph(BaseModel):
@@ -53,6 +58,7 @@ class CytoscapeGraph(BaseModel):
 
     @property
     def info_box(self) -> widgets.HTML:
+        """The info box widget containing data about the selected node."""
         return self._info_box.widget()
 
     def model_post_init(self, context: object) -> None:
@@ -122,11 +128,30 @@ class CytoscapeGraph(BaseModel):
         self.formats.format_nodes(node_id, format_name)
 
     def format_nodes(self, predicate: Callable[[str, GraphDataDict], bool], format_name: str) -> None:
+        """Applies the given format to all nodes that match the given predicate.
+
+        The predicate is a callable (lambda or function) that takes two parameters, being the node name (string)
+        and the node data (dictionary), while returning either True or False.
+        If the condition is True for a given node, the given format is applied to this node.
+
+        Args:
+            predicate (Callable[[str, GraphDataDict], bool]): A callable (lambda or function) that takes two parameters,
+                being the node name (string) and the node data (dictionary), while returning either True or False.
+            format_name (str): The format name to apply to all nodes that match the given condition.
+        """
         for n, d in self.module_graph.nodes(data=True):
             if predicate(n, d):
                 self.format_node(n, format_name)
 
     def format_in_out(self, *, in_format: Optional[str] = None, out_format: Optional[str] = None) -> None:
+        """Applies the given `in_format` to all input nodes and `out_format` to all output nodes.
+
+        Args:
+            in_format (Optional[str], optional): The name of the format to apply to all input nodes (i.e. input ports).
+                Defaults to None.
+            out_format (Optional[str], optional): The name of the format to apply to all output nodes (i.e. output ports).
+                Defaults to None.
+        """
         for node in self.module_graph.nodes:
             ntype: str = self.module_graph.node_subtype(node)
             if ntype == 'input' and in_format is not None:
@@ -135,6 +160,7 @@ class CytoscapeGraph(BaseModel):
                 self.format_node(node, out_format)
 
     def get_node_map(self) -> Dict[str, Node]:
+        """Returns a dictionary with node names mapped to `ipycytoscape.Node` objects."""
         return {n.data['id']: n for n in self.cyto.graph.nodes}
 
     def get_node(self, node_id: str) -> Node:
@@ -157,11 +183,23 @@ class CytoscapeGraph(BaseModel):
         raise ObjectNotFoundError(f'No node with id {node_id!r} found!')
 
     def get_node_element(self, node_id: str) -> Union[Instance, Port[Module]]:
+        """Returns the circuit object for the given node name.
+
+        Args:
+            node_id (str): The node name for which the circuit object (Instance or Module Port) should be retrieved.
+
+        Raises:
+            ObjectNotFoundError: If no node with the given name exists.
+
+        Returns:
+            Union[Instance, Port[Module]]: The circuit object (Instance or Module Port) associated with the given node name.
+        """
         if node_id not in self.module_graph.nodes:
             raise ObjectNotFoundError(f'No node with id {node_id!r} found!')
         return self.module_graph.get_data(node_id, 'ndata')
 
     def get_edge_map(self) -> Dict[str, Edge]:
+        """Returns a dictionary with wire names mapped to `ipycytoscape.Edge` objects."""
         return {e.data['ename']: e for e in self.cyto.graph.edges}
 
     def get_edge(self, wire_name: str) -> Edge:

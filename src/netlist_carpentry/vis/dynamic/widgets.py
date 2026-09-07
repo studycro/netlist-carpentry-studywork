@@ -1,3 +1,5 @@
+"""Handles the behavior of additional widges, e.g. the InfoBox."""
+
 from typing import Callable, Dict, TypeVar, Union
 
 import ipywidgets as widgets
@@ -27,6 +29,8 @@ T = TypeVar('T')
 
 
 class InfoBox(BaseModel):
+    """The InfoBox widget containing additional data about the selected node."""
+
     _style = INFO_BOX_BASE_STYLE.model_copy()
     _object: Union[Instance, Port[Module], None] = None
     _data: Dict[str, str] = {}
@@ -63,6 +67,7 @@ class InfoBox(BaseModel):
         self.widget()
 
     def get_display_data(self) -> str:
+        """Returns the data to display in the info box based on the currently selected node."""
         if isinstance(self._object, Port):
             return '<br>'.join(f'<b>{k}</b>: {v}' for k, v in self._get_display_data_port(self._object).items())
         elif isinstance(self._object, Instance):
