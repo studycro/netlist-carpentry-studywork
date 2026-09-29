@@ -78,16 +78,11 @@ def test_opt_constant_propagation(module: Module) -> None:
     module.instances['and_inst'].ports['A'].tie_signal('0', 0)
     module.instances['and_inst'].ports['B'].tie_signal('1', 0)
     assert opt_constant_propagation(module)
-    assert len(module.instances) == 4
-    assert len(module.wires) == 11
-    assert module.instances['xor_inst'].ports['A'][0].raw_ws_path == '0'
-
-    #It can be that it will break so here is a potential solution:
-    #assert len(module.instances) == 3
-    #assert len(module.wires) == 10
-    #assert 'xor_inst' not in module.instances  # XOR with constant 0 passes the other input through
-    #assert module.instances['not_inst'].ports['A'][0].raw_ws_path == 'test_module1.wire_or.0'
-    #assert module.instances['dff_inst'].ports['D'][0].raw_ws_path == 'test_module1.wire_or.0'
+    assert len(module.instances) == 3
+    assert len(module.wires) == 10
+    assert 'xor_inst' not in module.instances  # XOR with constant 0 passes the other input through
+    assert module.instances['not_inst'].ports['A'][0].raw_ws_path == 'test_module1.wire_or.0'
+    assert module.instances['dff_inst'].ports['D'][0].raw_ws_path == 'test_module1.wire_or.0'
 
     module.disconnect(module.instances['or_inst'].ports['A'][0])
     module.disconnect(module.instances['or_inst'].ports['B'][0])
