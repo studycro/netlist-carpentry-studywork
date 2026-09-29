@@ -3,21 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    Dict,
-    Generator,
-    Generic,
-    List,
-    Literal,
-    Optional,
-    Set,
-    Tuple,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import TYPE_CHECKING, Callable, Dict, Generator, Generic, List, Literal, Optional, Set, Tuple, TypeVar, Union, overload
 
 from pydantic import BaseModel, NonNegativeInt, PositiveInt, model_validator
 from typing_extensions import Self
@@ -37,6 +23,7 @@ from netlist_carpentry.core.netlist_elements.mixins.metadata import METADATA_DIC
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
 from netlist_carpentry.core.netlist_elements.port_segment import PortSegment
 from netlist_carpentry.core.protocols.signals import LogicLevel, SignalOrLogicLevel
+from netlist_carpentry.core.types.connectivity_data import ConnectivityData
 from netlist_carpentry.utils.custom_dict import CustomDict
 from netlist_carpentry.utils.gate_lib_dataclasses import PortParams
 
@@ -45,6 +32,9 @@ if TYPE_CHECKING:
 
 T_PARENT = TypeVar('T_PARENT', bound='Union[Module, Instance]')
 ANY_PORT = Union['Port[Module]', 'Port[Instance]']
+
+WireIndex = NonNegativeInt
+PortIndex = NonNegativeInt
 
 
 class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
@@ -71,17 +61,23 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
     """Whether this port is MSB (most significant bit) first or not"""
     module_or_instance: Optional[T_PARENT]
 
-    def __getitem__(self, index: int) -> PortSegment:
+    @overload
+    def __getitem__(self, index: int) -> PortSegment: ...
+    @overload
+    def __getitem__(self, index: slice[Optional[int], Optional[int], Optional[int]]) -> List[PortSegment]: ...
+    def __getitem__(self, index: Union[int, slice[Optional[int], Optional[int], Optional[int]]]) -> Union[PortSegment, List[PortSegment]]:
         """
         Allows subscripting of a Port object to access its port segments directly.
 
         This is mainly for convenience, to use Port[i] instead of Port.segments[i].
 
         Args:
-            index (int): The index of the desired port segment.
+            index (int | slice[Optional[int], Optional[int], Optional[int]]): The index of the desired port segment.
+                Can also be a slice (e.g. `[0:3]`).
 
         Returns:
-            PortSegment: The port segment at the specified index.
+            Union[PortSegment, List[PortSegment]]: The port segment at the specified index.
+                If a slice (e.g. `[0:3]`) is given, returns a list of port segments instead.
 
         Example:
             ```python
@@ -92,12 +88,18 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
             PortSegment(m.p.0, Signal:x)
             >>> p[3]
             PortSegment(m.p.3, Signal:x)
+            >>> p[1:-1]
+            [PortSegment(m.p.1, Signal:x), PortSegment(m.p.2, Signal:x)]
+            >>> p[69:420]
+            []
 
             ```
         """
-        if index in self.segments:
-            return self.segments[index]
-        raise IndexError(f'Port {self.raw_path} does not have a segment {index}!')
+        if isinstance(index, int):
+            if index in self.segments:
+                return self.segments[index]
+            raise IndexError(f'Port {self.raw_path} does not have a segment {index}!')
+        return [self.segments[i] for i in range(*index.indices(len(self)))]
 
     def __len__(self) -> int:
         """Returns the number of port segments in this port.
@@ -997,6 +999,70 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
         return set(ws.parent for ws in self.connected_wire_segments.values() if ws.has_parent())
 
     @property
+    def index_groups(self) -> Dict[WirePath, Dict[PortIndex, WireIndex]]:
+        """Groups the indices of this port by the wire they are connected to.
+
+        This means, for each wire connected to this port, it returns a dictionary of the port indices
+        that are connected to that wire, along with the corresponding wire indices.
+
+        This is useful for determining if the port is connected 1-to-1 to a certain wire, and how to simplify/merge connection data.
+
+        Returns:
+            Dict[WirePath, Dict[PortIndex, WireIndex]]: A dictionary where the keys are WirePaths of connected wires,
+                and the values are dictionaries mapping PortIndex (positive int) to WireIndex (positive int) for that wire.
+
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> p = m.create_port('data', 'input', width=4)
+            >>> wire1 = m.create_wire('w1', width=2)
+            >>> wire2 = m.create_wire('w2', width=2)
+            >>> m.connect(wire1[0], p[0])
+            >>> m.connect(wire1[1], p[3])
+            >>> m.connect(wire2[0], p[1])
+            >>> m.connect(wire2[1], p[2])
+            >>> p.index_groups
+            {WirePath m.w1: {0: 0, 3: 1}, WirePath m.w2: {1: 0, 2: 1}}
+
+            ```
+        """
+        index_groups: Dict[WirePath, Dict[PortIndex, WireIndex]] = {}
+        for idx, ws_path in self.connected_wire_segments.items():
+            if ws_path.has_parent() is False:
+                continue  # Skip constant wire segments, which do not have a parent by definition
+            wire = ws_path.parent
+            if wire not in index_groups:
+                index_groups[wire] = {}
+            index_groups[wire][idx] = int(ws_path.name)
+        return index_groups
+
+    @property
+    def connected_ports(self) -> ConnectivityData:
+        """Returns a ConnectivityData object with all ports (or port segments) connected to this port.
+
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> p1 = m.create_port('p1', 'in')
+            >>> p2 = m.create_port('p2', 'out')
+            >>> p3 = m.create_port('p3', 'out')
+            >>> m.connect(p1, p2)
+            >>> m.connect(p1, p3)
+            >>> p1.connected_ports  # Returns all ports connected to p1 via the same wire
+            {0: [PortSegment(m.p2.0, Signal:x), PortSegment(m.p3.0, Signal:x)]}
+            >>> p2.connected_ports
+            {0: [PortSegment(m.p1.0, Signal:x), PortSegment(m.p3.0, Signal:x)]}
+            >>> p3.connected_ports
+            {0: [PortSegment(m.p1.0, Signal:x), PortSegment(m.p2.0, Signal:x)]}
+
+            ```
+        """
+        connections = {idx: [p for p in ps.ws.port_segments if p is not ps] for idx, ps in self}
+        return ConnectivityData(base=self, connections=connections)  # type: ignore[arg-type]
+
+    @property
     def is_connected_1to1(self) -> bool:
         """
         True if this port is connected completely to a certain wire.
@@ -1363,18 +1429,16 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
         return len([sig for sig in self.signal_array.values() if sig == target_signal])
 
     @overload
-    def driver(self, single: Literal[True]) -> ANY_PORT: ...
+    def driver(self) -> ConnectivityData: ...
     @overload
-    def driver(self, single: Literal[False]) -> Dict[NonNegativeInt, Optional[PortSegment]]: ...
-    @overload
-    def driver(self) -> Dict[NonNegativeInt, Optional[PortSegment]]: ...
-    def driver(self, single: bool = False) -> Union[ANY_PORT, Dict[NonNegativeInt, Optional[PortSegment]]]:
+    def driver(self, single: Literal[True] = True) -> ANY_PORT: ...
+    def driver(self, single: Optional[bool] = None) -> Union[ANY_PORT, ConnectivityData]:
         """Returns the driver of this port if it has one, otherwise None.
 
         Can only be retrieved if this port is a load port.
 
         Args:
-            single (bool, optional): Whether to return a single port, but this only works if each segment
+            single (bool, optional): **DEPRECATED** Whether to return a single port, but this only works if each segment
                 of this port is connected to the same port. Defaults to False.
 
         Raises:
@@ -1383,8 +1447,7 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
                 by different ports for different segments.
 
         Returns:
-            Union[ANY_PORT, Dict[NonNegativeInt, Optional[PortSegment]]]: Either a single port that drives this port (if `single` is True),
-                or a dictionary containing the driver (which is the opposing port segment) for each segment of this port. If the entry is None,
+            ConnectivityData: A dict-like ConnectivityData object containing the driver (which is the opposing port segment) for each segment of this port. If the entry is None,
                 then the corresponding port segment is undriven.
 
         Example:
@@ -1398,39 +1461,52 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
             Traceback (most recent call last):
             ...
             netlist_carpentry.core.exceptions.InvalidDirectionError: Cannot get driving port of port m.a: This port is a driver and thus does not have a driver!
-            >>> p_out.driver()  # Module output ports are loads, can retrieve their driver
-            {0: PortSegment(m.a.0, Signal:x)}
+            >>> p_out.driver()  # Module output ports are loads, can retrieve their driver (returns ConnectivityData object)
+            {0: [PortSegment(m.a.0, Signal:x)]}
+            >>> p_out.driver().connected_ports
+            {PortPath m.a}
 
             ```
         """
+        if single is not None:
+            warnings.warn(
+                "Parameter 'single' is deprecated and will be removed in v1.0.0. This function now returns ConnectivityData objects. "
+                + "Use 'Port.driver().get_connected_port()' instead for the current behavior.",
+                DeprecationWarning,
+                stacklevel=2,  # Ensures the warning points to the user's code, not this line
+            )
         if self.is_driver:
             raise InvalidDirectionError(f'Cannot get driving port of port {self.raw_path}: This port is a driver and thus does not have a driver!')
-        drivers: Dict[NonNegativeInt, Optional[PortSegment]] = {}
+        drivers: Dict[NonNegativeInt, List[PortSegment]] = {}
         for idx, ps in self:
             if not ps.is_tied:
-                dr_wire = self.module.wires[ps.ws_path.parent.name]
-                dr_ws = dr_wire[int(ps.ws_path.name)]
-                drivers[idx] = dr_ws.driver()[0] if dr_ws.driver() else None
+                drivers[idx] = self.module.wires[ps.ws_path.parent.name][int(ps.ws_path.name)].driver()
             else:
-                drivers[idx] = None
+                drivers[idx] = []
         if single:
-            dr_list = drivers.values()
-            if None in dr_list:
-                raise WidthMismatchError(f'Cannot determine single driving port: At least one port segment of port {self.raw_path} is undriven!')
-            ps_list: List[PortSegment] = [ps for ps in dr_list if ps is not None]
-            if all(ps_list[0].parent.name == ps.parent.name for ps in ps_list) and ps_list[0].parent.width == self.width:
-                return ps_list[0].parent
-            raise WidthMismatchError(f'Cannot determine single driving port of port {self.raw_path}: Differing port widths!')
-        return drivers
+            return self._driver_deprecated(drivers)
+        return ConnectivityData(base=self, connections=drivers)  # type: ignore[arg-type]
 
-    def loads(self) -> Dict[NonNegativeInt, List[PortSegment]]:
-        """Returns the loads of this port as a dictionary of indices with associated port segment lists.
+    def _driver_deprecated(self, drivers: Dict[NonNegativeInt, List[PortSegment]]) -> ANY_PORT:
+        dr_list = drivers.values()
+        if self.is_unconnected_partly:
+            raise WidthMismatchError(f'Cannot determine single driving port: At least one port segment of port {self.raw_path} is undriven!')
+        ps_list: List[PortSegment] = [ps[0] for ps in dr_list if ps is not None]
+        if all(ps_list[0].parent.name == ps.parent.name for ps in ps_list) and ps_list[0].parent.width == self.width:
+            return ps_list[0].parent
+        raise WidthMismatchError(f'Cannot determine single driving port of port {self.raw_path}: Differing port widths!')
 
-        If this port itself is a load port, it is also included into the list of load for each segment.
+    def loads(self) -> ConnectivityData:
+        """Returns the loads of this port as a ConnectivityData object, a dict-like object with indices and associated port segment lists.
+
+        If this port itself is a load port, it is excluded from the list of loads for each segment.
+        In this case, the loads only contain all other load ports.
 
         Returns:
-            Dict[NonNegativeInt, List[PortSegment]]: A dict of all indices mapped to port segments that receive the same signal via the same wire.
-                If this port itself is a load port, it is also included into the list of load for each segment.
+            ConnectivityData: A dict-like object of all indices mapped to port segments that receive the same signal via the same wire.
+                If this port itself is a load port, it is excluded from the list of loads for each segment.
+                In this case, the loads only contain all other load ports.
+                The ConnectivityData object has a broad set of properties and methods to analyze and track the loads of this port.
 
         Example:
             ```python
@@ -1439,14 +1515,28 @@ class Port(NetlistElement, BaseModel, Generic[T_PARENT]):
             >>> p_in = m.create_port('a', 'input')
             >>> p_out = m.create_port('b', 'output')
             >>> m.connect(p_in, p_out)
+            >>> p_in.loads()  # Returns ConnectivityData object
+            {0: [PortSegment(m.b.0, Signal:x)]}
+            >>> p_in.loads().connected_ports  # Returns ConnectivityData object
+            {PortPath m.b}
+            >>> p_out.loads()  # Excludes itself from the loads, hence empty list
+            {0: []}
+            >>> p_out2 = m.create_port('c', 'output')
+            >>> m.connect(p_in, p_out2)
             >>> p_in.loads()
-            {0: [PortSegment(m.b.0, Signal:x)]}
-            >>> p_out.loads()  # Returns itself as part of the loads, since it is a load port itself
-            {0: [PortSegment(m.b.0, Signal:x)]}
+            {0: [PortSegment(m.b.0, Signal:x), PortSegment(m.c.0, Signal:x)]}
+            >>> p_out.loads()  # Excludes itself from the loads, shows only other loads
+            {0: [PortSegment(m.c.0, Signal:x)]}
 
             ```
         """
-        return {idx: self.module.wires[self[idx].ws_path.parent.name].loads()[ps.ws.index] for idx, ps in self}
+        lds = {}
+        for idx, ps in self:
+            if not ps.is_tied:
+                lds[idx] = [ps for ps in self.module.wires[ps.ws_path.parent.name].loads()[ps.ws.index] if ps.parent is not self]
+            else:
+                lds[idx] = []
+        return ConnectivityData(base=self, connections=lds)  # type: ignore[arg-type]
 
     def set_signed(self, signed: bool) -> bool:
         """Modifies the signedness of this port and returns whether the signedness has changed.

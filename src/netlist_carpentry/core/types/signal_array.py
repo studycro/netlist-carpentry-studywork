@@ -1,4 +1,6 @@
-from typing import Dict, Generator, ItemsView, KeysView, List, Optional, Union, ValuesView
+from __future__ import annotations
+
+from typing import Dict, Generator, ItemsView, KeysView, List, Optional, Union, ValuesView, overload
 
 from pydantic import BaseModel, NonNegativeInt, PositiveInt
 
@@ -49,10 +51,16 @@ class SignalArray(BaseModel):
         SignalArray.fill_gaps(self.signals, self.default_fill)
         return super().model_post_init(context)
 
-    def __getitem__(self, key: NonNegativeInt) -> Signal:
-        if key in self.signals:
-            return self.signals[key]
-        raise KeyError(f'No index {key} in Signal array {str(self)!r} (size {self.size})!')
+    @overload
+    def __getitem__(self, key: NonNegativeInt) -> Signal: ...
+    @overload
+    def __getitem__(self, key: slice[Optional[int], Optional[int], Optional[int]]) -> List[Signal]: ...
+    def __getitem__(self, key: Union[NonNegativeInt, slice[Optional[int], Optional[int], Optional[int]]]) -> Union[Signal, List[Signal]]:
+        if isinstance(key, int):
+            if key in self.signals:
+                return self.signals[key]
+            raise KeyError(f'No index {key} in Signal array {str(self)!r} (size {self.size})!')
+        return [self.signals[i] for i in range(*key.indices(len(self.signals)))]
 
     def __setitem__(self, key: NonNegativeInt, value: Signal) -> None:
         self.signals[key] = value
@@ -193,6 +201,7 @@ class SignalArray(BaseModel):
                 (starting from 0 for the LSB) and the values are the corresponding Signal objects.
 
         Example:
+            ```python
             >>> # 5 in binary is 101. MSB-first mapping:
             >>> SignalArray.from_int(5).signals
             {0: HIGH, 1: LOW, 2: HIGH}
@@ -200,6 +209,8 @@ class SignalArray(BaseModel):
             >>> # -1 in 4-bit two's complement is 1111
             >>> SignalArray.from_int(-1, fixed_width=4).signals
             {0: HIGH, 1: HIGH, 2: HIGH, 3: HIGH}
+
+            ```
         """
         min_width = (sig_val if sig_val >= 0 else ~sig_val).bit_length() + (1 if sig_val < 0 else 0)
         if fixed_width is not None and fixed_width < min_width and not truncate:
@@ -253,13 +264,15 @@ class SignalArray(BaseModel):
             InvalidSignalError: If `sig_str` contains characters other than '0', '1', 'x', or 'z'.
 
         Example:
+            ```python
             >>> # Parsing a 4-bit MSB-first signal
             >>> SignalArray.from_bin("10xz", msb_first=True).signals
             {0: FLOATING, 1: UNDEFINED, 2: LOW, 3: HIGH}
-
             >>> # Parsing with a fixed width (padding)
             >>> SignalArray.from_bin("11", fixed_width=4).signals
             {0: HIGH, 1: HIGH, 2: LOW, 3: LOW}
+
+            ```
         """
         if any(s not in ['0', '1', 'z', 'x'] for s in sig_str):
             raise InvalidSignalError(

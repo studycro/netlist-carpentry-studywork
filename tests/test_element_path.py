@@ -170,18 +170,43 @@ def test_subscript(general_path: ElementPath) -> None:
         general_path[-6]
 
 
-def test_get_subseq(general_path: ElementPath) -> None:
-    elements = general_path.get_subseq(0, 5)
+def test_subscript_slice(general_path: ElementPath) -> None:
+    elements = general_path[0:5]
     assert elements == ['a', 'b', 'c', 'd', 'test_path']
-    elements = general_path.get_subseq(-5, None)
+    elements = general_path[-5:None]
     assert elements == ['a', 'b', 'c', 'd', 'test_path']
-    elements = general_path.get_subseq(-3, -3)
+    elements = general_path[:5]
+    assert elements == ['a', 'b', 'c', 'd', 'test_path']
+    elements = general_path[-5:]
+    assert elements == ['a', 'b', 'c', 'd', 'test_path']
+    elements = general_path[-3:-3]
     assert elements == []
-    elements = general_path.get_subseq(2, -1)
+    elements = general_path[2:-1]
     assert elements == ['c', 'd']
-    elements = general_path.get_subseq(-1, 1)
+    elements = general_path[-1:1]
     assert elements == []
-    elements = general_path.get_subseq(-420, 69)
+    elements = general_path[-420:69]
+    assert elements == ['a', 'b', 'c', 'd', 'test_path']
+
+
+def test_get_subseq(general_path: ElementPath) -> None:
+    with pytest.warns(DeprecationWarning, match=r'ElementPath\[:5\]'):
+        elements = general_path.get_subseq(0, 5)
+    assert elements == ['a', 'b', 'c', 'd', 'test_path']
+    with pytest.warns(DeprecationWarning, match=r'ElementPath\[-5:\]'):
+        elements = general_path.get_subseq(-5, None)
+    assert elements == ['a', 'b', 'c', 'd', 'test_path']
+    with pytest.warns(DeprecationWarning, match=r'ElementPath\[-3:-3\]'):
+        elements = general_path.get_subseq(-3, -3)
+    assert elements == []
+    with pytest.warns(DeprecationWarning, match=r'ElementPath\[2:-1\]'):
+        elements = general_path.get_subseq(2, -1)
+    assert elements == ['c', 'd']
+    with pytest.warns(DeprecationWarning, match=r'ElementPath\[-1:1\]'):
+        elements = general_path.get_subseq(-1, 1)
+    assert elements == []
+    with pytest.warns(DeprecationWarning, match=r'ElementPath\[-420:69\]'):
+        elements = general_path.get_subseq(-420, 69)
     assert elements == ['a', 'b', 'c', 'd', 'test_path']
 
 

@@ -4,6 +4,7 @@ import os
 import platform
 import shutil
 
+
 try:
     import pywellen  # noqa: F401
 
@@ -11,6 +12,18 @@ try:
 except ImportError:
     HAS_VCD = False
 
+
+def _nc_version() -> str:
+    from importlib.metadata import version, PackageNotFoundError
+
+    try:
+        return version('netlist-carpentry')
+    except PackageNotFoundError:
+        # This happens if the package isn't installed (e.g., just copied the files)
+        return 'unknown'
+
+
+__version__ = _nc_version()
 
 NC_DIR = os.path.dirname(os.path.abspath(__file__))
 """The root directory of Netlist Carpentry."""
@@ -39,13 +52,15 @@ from netlist_carpentry.core.netlist_elements.instance import Instance
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
 from netlist_carpentry.core.circuit import Circuit
+from netlist_carpentry.core.types.connectivity_data import ConnectivityData
+from netlist_carpentry.core.graph import ModuleGraph
+from netlist_carpentry.core.graph.pattern import EMPTY_PATTERN
 from netlist_carpentry.utils import gate_factory, gate_lib
 from netlist_carpentry.io.read.yosys import ReadConfig
 from netlist_carpentry.io.read.read_utils import read_json, read, read_via_cfg, generate_json
 from netlist_carpentry.io.write.write_utils import write
-from netlist_carpentry.core.graph.pattern import EMPTY_PATTERN
 from netlist_carpentry.scripts import NC_SCRIPTS_DIR, run_equiv, run_eqy, run_equiv_miter
-from netlist_carpentry.core.graph import ModuleGraph
+from netlist_carpentry.vis import show
 
 Port.model_rebuild()
 Wire.model_rebuild()
@@ -68,6 +83,7 @@ __all__ = [
     'WIRE_SEGMENT_X',
     'WIRE_SEGMENT_Z',
     'Circuit',
+    'ConnectivityData',
     'Direction',
     'Instance',
     'Module',
@@ -89,6 +105,7 @@ __all__ = [
     'run_equiv',
     'run_equiv_miter',
     'run_eqy',
+    'show',
     'write',
 ]
 

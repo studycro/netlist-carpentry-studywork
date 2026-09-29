@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import builtins
 import warnings
-from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Literal, Optional, Tuple, Union, overload
+from typing import TYPE_CHECKING, Callable, Dict, Generator, List, Literal, Optional, Set, Tuple, Union, overload
 
 from pydantic import BaseModel, NonNegativeInt, PositiveInt, model_validator
 from typing_extensions import Self
@@ -15,14 +15,13 @@ from netlist_carpentry.core.exceptions import (
     IdentifierConflictError,
     MultipleDriverError,
     ParentNotFoundError,
-    UnsupportedOperationError,
 )
-from netlist_carpentry.core.netlist_elements.element_path import WirePath
+from netlist_carpentry.core.netlist_elements.element_path import PortPath, WirePath
 from netlist_carpentry.core.netlist_elements.mixins.metadata import METADATA_DICT, NESTED_DICT
 from netlist_carpentry.core.netlist_elements.netlist_element import NetlistElement
-from netlist_carpentry.core.netlist_elements.port_segment import PortSegment
 from netlist_carpentry.core.netlist_elements.wire_segment import WireSegment
 from netlist_carpentry.core.protocols.signals import LogicLevel, SignalOrLogicLevel
+from netlist_carpentry.core.types.connectivity_data import ConnectivityData
 from netlist_carpentry.utils.custom_dict import CustomDict
 from netlist_carpentry.utils.gate_lib_dataclasses import WireParams
 
@@ -44,24 +43,48 @@ class Wire(NetlistElement, BaseModel):
     parameters: WireParams = WireParams()
 
     msb_first: bool = True
-    """Whether this port is MSB (most significant bit) first or not"""
+    """Whether this wire is MSB (most significant bit) first or not"""
     module: Optional['Module']
 
-    def __getitem__(self, index: int) -> WireSegment:
+    @overload
+    def __getitem__(self, index: int) -> WireSegment: ...
+    @overload
+    def __getitem__(self, index: slice[Optional[int], Optional[int], Optional[int]]) -> List[WireSegment]: ...
+    def __getitem__(self, index: Union[int, slice[Optional[int], Optional[int], Optional[int]]]) -> Union[WireSegment, List[WireSegment]]:
         """
         Allows subscripting of a Wire object to access its wire segments directly.
 
         This is mainly for convenience, to use Wire[i] instead of Wire.segments[i].
 
         Args:
-            index (int): The index of the desired wire segment.
+            index (int | slice[Optional[int], Optional[int], Optional[int]]): The index of the desired wire segment.
+                Can also be a slice (e.g. `[0:3]`).
 
         Returns:
             WireSegment: The wire segment at the specified index.
+                If a slice (e.g. `[0:3]`) is given, returns a list of wire segments instead.
+
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> w = m.create_wire('w', width=4)
+            >>> w[0]
+            WireSegment(m.w.0, Signal:x, 0 port(s))
+            >>> w[3]
+            WireSegment(m.w.3, Signal:x, 0 port(s))
+            >>> w[1:-1]
+            [WireSegment(m.w.1, Signal:x, 0 port(s)), WireSegment(m.w.2, Signal:x, 0 port(s))]
+            >>> w[69:420]
+            []
+
+            ```
         """
-        if index in self.segments:
-            return self.segments[index]
-        raise IndexError(f'Wire {self.raw_path} does not have a segment {index}!')
+        if isinstance(index, int):
+            if index in self.segments:
+                return self.segments[index]
+            raise IndexError(f'Wire {self.raw_path} does not have a segment {index}!')
+        return [self.segments[i] for i in range(*index.indices(len(self)))]
 
     def __len__(self) -> int:
         return len(self.segments)
@@ -216,8 +239,8 @@ class Wire(NetlistElement, BaseModel):
         """
         Whether the LSB (least significant bit) comes first.
 
-        This property is coupled with Port.msb_first.
-        To change this value, change `Port.msb_first`, and this property is updated accordingly.
+        This property is coupled with Wire.msb_first.
+        To change this value, change `Wire.msb_first`, and this property is updated accordingly.
         """
         return not self.msb_first
 
@@ -231,14 +254,40 @@ class Wire(NetlistElement, BaseModel):
         return not self.signed
 
     @property
-    def connected_port_segments(self) -> Dict[NonNegativeInt, List[PortSegment]]:
+    def connections(self) -> ConnectivityData:
+        return ConnectivityData(base=self, connections={idx: s.port_segments for idx, s in self})
+
+    @property
+    def connected_port_segments(self) -> ConnectivityData:
         """
         Dictionary mapping wire indices to port segments connected to the respective wire index.
 
         Each key is a wire index (NonNegativeInt), and the value is a list of port segments connected to this wire segment index.
         Accordingly, each port segment from the list is connected to the same wire segment.
         """
-        return {idx: s.port_segments for idx, s in self}
+        warnings.warn(
+            "'Wire.connected_port_segments' is deprecated and will be removed in v1.0.0. Use 'Wire.connections' instead!",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.connections
+
+    @property
+    def fully_connected_ports(self) -> Set[PortPath]:
+        """
+        Set of fully connected ports to this wire.
+
+        A port is considered fully connected to a wire if all its segments are connected to the wire and in the correct order.
+        This property returns a set of PortPath objects representing the fully connected ports.
+        Any port in this set is guaranteed to be fully connected to this wire, and the wire is guaranteed to be fully connected to any port in this set.
+        This conforms to the verilog equivalent of `assign wire = port;` without any slicing.
+        """
+        warnings.warn(
+            "'Wire.fully_connected_ports' is deprecated and will be removed in v1.0.0. Use 'Wire.connections.fully_connected_ports' instead!",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.connections.fully_connected_ports
 
     @model_validator(mode='after')
     def _link_parent(self) -> Self:
@@ -393,49 +442,61 @@ class Wire(NetlistElement, BaseModel):
     def set_signed(self, signed: bool) -> None:
         self.parameters.signed = int(signed)
 
-    def driver(self) -> Dict[int, Optional[PortSegment]]:
+    def driver(self) -> ConnectivityData:
         """
-        Returns a dictionary of wire segment indices to lists of driving ports.
+        Returns a dict-like ConnectivityData object of wire segment indices to lists of driving ports (should ever only contain a single element).
 
         The method retrieves the connections that are considered as drivers (which ideally is only one driver) for each wire segment in the wire.
 
         Returns:
-            A dictionary mapping wire segment indices (int) to a list of Port objects
-            representing the driver connections (should be only one) at each index.
-        """
-        return {i: dr[0] if dr else None for i, dr in self._drv_or_lds_connections(get_drv=True).items()}
+            ConnectivityData: A dict-like ConnectivityData object mapping wire segment indices (int) to a list
+                of Port objects representing the driver connections (should be only one) at each index.
 
-    def loads(self) -> Dict[int, List[PortSegment]]:
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> p1 = m.create_port('p1', 'in')
+            >>> p2 = m.create_port('p2', 'out')
+            >>> m.connect(p1, p2, 'someWire')
+            >>> m.wires['someWire'].driver()
+            {0: [PortSegment(m.p1.0, Signal:x)]}
+            >>> m.wires['someWire'].driver().fully_connected_ports
+            {PortPath m.p1}
+            >>> m.wires['someWire'].driver().partially_connected_ports
+            set()
+
+            ```
         """
-        Returns a dictionary of wire segment indices to lists of load ports.
+        return ConnectivityData(base=self, connections={s: self[s].driver() for s in self.segments})
+
+    def loads(self) -> ConnectivityData:
+        """
+        Returns a dict-like ConnectivityData object of wire segment indices to lists of load ports.
 
         The method retrieves the connections that are considered as loads for each wire segment in the wire.
 
         Returns:
-            A dictionary with integer keys representing wire segment indices and values being lists of Port objects,
-            which represent the load ports connected at those indices.
-        """
-        return self._drv_or_lds_connections(get_drv=False)
+            ConnectivityData: A dict-like ConnectivityData object with integer keys representing wire segment indices
+                and values being lists of Port objects, which represent the load ports connected at those indices.
 
-    def _drv_or_lds_connections(self, get_drv: bool) -> Dict[int, List[PortSegment]]:
-        """
-        Retrieves connections for either drivers or loads on the wire.
+        Example:
+            ```python
+            >>> from netlist_carpentry import Module
+            >>> m = Module(name='m')
+            >>> p1 = m.create_port('p1', 'in')
+            >>> p2 = m.create_port('p2', 'out')
+            >>> m.connect(p1, p2, 'someWire')
+            >>> m.wires['someWire'].loads()
+            {0: [PortSegment(m.p2.0, Signal:x)]}
+            >>> m.wires['someWire'].loads().fully_connected_ports
+            {PortPath m.p2}
+            >>> m.wires['someWire'].loads().partially_connected_ports
+            set()
 
-        Args:
-            get_drv (bool): Whether to retrieve driver connections (True) or load connections (False).
-
-        Returns:
-            A dictionary mapping each wire segment index to a list of Port objects.
+            ```
         """
-        con_dict = {}
-        for s in self.segments:
-            if get_drv:
-                # Retrieve driver connections
-                con_dict[s] = self[s].driver()
-            else:
-                # Retrieve load connections
-                con_dict[s] = self[s].loads()
-        return con_dict
+        return ConnectivityData(base=self, connections={s: self[s].loads() for s in self.segments})
 
     def has_no_driver(self, get_mapping: bool = False) -> Union[bool, Dict[int, bool]]:
         """
@@ -543,8 +604,6 @@ class Wire(NetlistElement, BaseModel):
         return mapping if get_mapping else any_or_all(mapping[k] for k in mapping)
 
     def _set_name_recursively(self, old_name: str, new_name: str) -> None:
-        if old_name in self.parent.ports:
-            raise UnsupportedOperationError(f'Cannot rename wire {self.raw_path}: Cannot rename a wire that has the same name as a module port!')
         for _, ws in self:
             for ps in ws.port_segments:
                 ps.set_ws_path(ps.ws_path.replace(old_name, new_name))

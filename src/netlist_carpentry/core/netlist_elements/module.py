@@ -521,6 +521,13 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         p.create_port_segments(width, offset)
         p.change_mutability(is_now_locked=is_locked)
         LOG.debug(f'Created port {p.raw_path}, {width} bit wide.')
+        if create_associated_wire:
+            try:
+                w = self.create_wire(name, width=width, offset=offset)
+                self.connect(w, p)
+            except IdentifierConflictError as e:
+                err_msg = f'Cannot auto-create wire {name!r} for port {name!r}: A wire with this name already exists!'
+                raise IdentifierConflictError(err_msg) from e
         return p
 
     def remove_port(self, port: Union[str, Port[Module]]) -> None:
@@ -730,7 +737,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         """
         wire_name = wire.name if isinstance(wire, Wire) else wire
         if wire_name in self.wires:
-            for plist in self.wires[wire_name].connected_port_segments.values():
+            for plist in self.wires[wire_name].connections.values():
                 for p in plist.copy():
                     self.disconnect(p.path)
             self.wires[wire_name].module = None
@@ -883,52 +890,55 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         source_obj = self._get_from_path_or_object(source)
         target_obj = self._get_from_path_or_object(target)
 
-        # Validate: target must be unconnected
-        if not target_obj.is_tied:
+        # Validate: target must be unconnected (only meaningful for port segments)
+        if hasattr(target_obj, 'is_tied') and not target_obj.is_tied:
             raise AlreadyConnectedError(f'{target_obj.type.value} {target_obj.raw_path} must be unconnected before attempting to connect it!')
 
+        width1: int = 1 if source_obj.type.is_segment else source_obj.width  # type: ignore[misc, union-attr]
+        width2: int = 1 if target_obj.type.is_segment else target_obj.width  # type: ignore[misc, union-attr]
+        # Check first for width mismatches
+        if source_obj.type.is_segment != target_obj.type.is_segment and width1 != width2:  # 1 bit port can be connected to segment
+            source_str = f'{source_obj.__class__.__name__} {source_obj.type.value} ({width1} bit wide)'
+            target_str = f'{target_obj.__class__.__name__} {target_obj.type.value} ({width2} bit wide)'
+            raise UnsupportedOperationError(f'Cannot connect {source_str} to {target_str}: Can only connect elements of equal widths!')
         # Dispatch based on source/target types
         if isinstance(source_obj, (WireSegment, Wire)):
             self._connect_wire_to_port(source_obj, target_obj)
         elif isinstance(source_obj, Port) and isinstance(target_obj, Port):
-            self._connect_ports_full(source_obj, target_obj, new_wire_name=new_wire_name)
-        elif source_obj.type.is_segment != target_obj.type.is_segment:
-            raise UnsupportedOperationError(
-                f'Cannot connect {source_obj.type.value} to {target_obj.type.value}: Can only connect segments to segments!'
-            )
+            self._connect_ports_full(source_obj, target_obj, wname=new_wire_name)
         else:
             self._connect_segments(source_obj, target_obj, new_wire_name)
 
-    def _connect_segments(
-        self,
-        source_seg: Union[PortSegment, WireSegment],
-        target_seg: Union[PortSegment, WireSegment],
-        new_wire_name: Optional[str] = None,
-    ) -> None:
-        """Connect two segments via a wire segment.
-
-        If the source is an unconnected port segment, a new wire is created.
-        Otherwise the source's existing wire is reused.
-        Both segments are connected directly to the wire segment, bypassing
-        the full dispatch chain for efficiency.
-        """
+    def _connect_segments(self, source_seg: Union[T_PORT, PortSegment], target_seg: Union[T_PORT, PortSegment], wname: Optional[str] = None) -> None:
+        """Connect two segments via a wire segment. If the source is unconnected, a new wire is created. Otherwise the source's existing wire is reused."""
         # Determine the wire segment: new if source port is unconnected, else reuse
-        if isinstance(source_seg, PortSegment) and source_seg.is_unconnected:
+        if isinstance(source_seg, Port):
+            source_seg = source_seg[source_seg.offset or 0]
+        if isinstance(target_seg, Port):
+            target_seg = target_seg[target_seg.offset or 0]
+        if source_seg.is_unconnected:
             # If the source is a module port segment and no explicit name is given, use the parent port name for the wire (so generated Verilog matches).
             # Check if a wire with that name already exists to avoid conflicts when connecting multiple segments of the same port.
-            if new_wire_name is None and source_seg.parent.is_module_port:
-                wire_name = source_seg.parent.name
-                if wire_name in self.wires:
-                    wire_seg = self.wires[wire_name][source_seg.index]
-                else:
-                    wire_seg = self.create_wire(wire_name, width=source_seg.parent.width)[source_seg.index]
+            use_target_seg = False
+            if wname is None and source_seg.parent.is_module_port:  # Use Input Port name as wire name first
+                wname = source_seg.parent.name
+            elif wname is None and target_seg.parent.is_module_port:  # Then use Output Port name as wire name (if applicable)
+                wname = target_seg.parent.name
+                use_target_seg = True
+            seg = target_seg if use_target_seg else source_seg
+            if wname is not None and wname in self.wires:
+                if seg.index not in self.wires[wname].segments:
+                    self.wires[wname].create_wire_segment(seg.index)
+                wire_seg = self.wires[wname][seg.index]
             else:
-                wire_seg = self.create_wire(new_wire_name)[0]
+                # In any other case, a generic wire is generated, since wname stays None (if it is not connected to a port)
+                wire_seg = self.create_wire(wname, width=seg.parent.width, offset=seg.parent.offset or 0)[seg.index]
         else:
-            wire_seg = source_seg.ws  # type: ignore[union-attr]
+            wire_seg = source_seg.ws
 
         # Connect both segments directly to the wire segment
-        self._connect_to_wire_segment(source_seg, wire_seg)
+        if source_seg.is_unconnected:
+            self._connect_to_wire_segment(source_seg, wire_seg)
         self._connect_to_wire_segment(target_seg, wire_seg)
 
     @overload
@@ -961,7 +971,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
             return self.get_from_path(path_or_object)
         return path_or_object
 
-    def _connect_ports_full(self, driver: T_PORT, load: T_PORT, new_wire_name: Optional[str] = None) -> None:
+    def _connect_ports_full(self, driver: T_PORT, load: T_PORT, wname: Optional[str] = None) -> None:
         """Connect two full ports bit-by-bit.
 
         Each bit of the *driver* port is connected to the corresponding bit of the *load* port.
@@ -973,7 +983,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         Args:
             driver: The driving port (must not itself be a driver).
             load: The loaded port (will receive signals from *driver*).
-            new_wire_name: Optional name for a newly created wire.
+            wname: Optional name for a newly created wire.
 
         Raises:
             InvalidDirectionError: If the target port is also a driver.
@@ -994,29 +1004,26 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         # Determine the wire name when creating a new wire for an unconnected driver, also check if a wire with that name already exists to avoid conflicts.
         # If the driver is a module port and no explicit name is given, use the port name (so the generated Verilog has `wire <port_name>` matching the port).
         if driver.is_unconnected_partly:
-            if new_wire_name is None and driver.is_module_port:
-                wire_name = driver.name
-                wire = self.wires[wire_name] if wire_name in self.wires else self.create_wire(wire_name, width=driver.width)
-            else:
-                wire = self.create_wire(new_wire_name, width=driver.width)
+            if wname is None and driver.is_module_port:  # Use Input Port name as wire name first
+                wname = driver.name
+            elif wname is None and load.is_module_port:  # Then use Output Port name as wire name (if applicable)
+                wname = load.name
+            # In any other case, a generic wire is generated, since wname stays None (if it is not connected to a port)
+            wire = self.wires[wname] if wname and wname in self.wires else self.create_wire(wname, width=driver.width, offset=driver.offset or 0)
         else:
             wire = None
 
-        load_offset = load.offset or 0
+        offset = (load.offset or 0) - (driver.offset or 0)
         for idx, dr_seg in driver:
             # Pick the wire segment: reuse existing or use newly created
-            ws = dr_seg.ws if dr_seg.is_connected else wire[idx]
+            ws = dr_seg.ws if dr_seg.is_connected or wire is None else wire[idx]
 
             # Connect driver segment (if unconnected) and load segment to the same wire
             if dr_seg.is_unconnected:
                 self._connect_to_wire_segment(dr_seg, ws)
-            self._connect_to_wire_segment(load[idx + load_offset], ws)
+            self._connect_to_wire_segment(load[idx + offset], ws)
 
-    def _connect_wire_to_port(
-        self,
-        wire_like: Union[WireSegment, Wire],
-        port_like: Union[PortSegment, T_PORT],
-    ) -> None:
+    def _connect_wire_to_port(self, wire_like: Union[WireSegment, Wire], port_like: Union[PortSegment, T_PORT]) -> None:
         """Connect a wire (or wire segment) to a port (or port segment).
 
         Handles full wire→port (bit-by-bit via ``_connect_to_wire_segment``),
@@ -1033,7 +1040,8 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
                     '\tconnect(wire.segment[1], port.segment[4])'
                 )
             for idx in wire_like.segments:
-                self._connect_to_wire_segment(port_like[idx], wire_like[idx])
+                port_idx = (port_like.offset or 0) + idx - (wire_like.offset or 0)
+                self._connect_to_wire_segment(port_like[port_idx], wire_like[idx])
             return
 
         # Normalize to segment-level objects
@@ -1472,15 +1480,24 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         for n, v, key, data in neighbors:
             neighbor_node = v if get_outgoing else n
             neighbor = self.instances[neighbor_node] if neighbor_node in self.instances else self.ports[neighbor_node]
-            node_port_name: str = key.split(CFG.id_internal)[0 if get_outgoing else 1]
+            parts = key.split(CFG.id_internal)
+            # Key format: {drv_port}§{ld_port} (connected 1:1 via the wire) or
+            #             {drv_port}[{drv_seg}]§{ld_port}[{ld_seg}] (only connected segment-wise)
+            node_port_name: str = parts[0] if get_outgoing else (parts[2] if len(parts) > 2 else parts[1])
             node_index = data['dr_seg'] if get_outgoing else data['ld_seg']
             if node_port_name not in insts:
                 insts[node_port_name] = defaultdict(list)
-            insts[node_port_name][node_index].append(neighbor)
-            if not get_outgoing and len(insts[node_port_name][node_index]) > 1:
-                raise MultipleDriverError(
-                    f'Error whilst collecting neighbors: Found multiple drivers for port {node_port_name} (index {node_index}) of instance {n}!'
-                )
+            if node_index is None:
+                port = neighbor.ports[node_port_name] if isinstance(neighbor, Instance) else neighbor
+                indices = [idx for idx, _ in port]
+            else:
+                indices = [node_index]
+            for idx in indices:
+                insts[node_port_name][idx].append(neighbor)
+                if not get_outgoing and len(insts[node_port_name][idx]) > 1:
+                    raise MultipleDriverError(
+                        f'Error whilst collecting neighbors: Found multiple drivers for port {node_port_name} (index {idx}) of instance {n}!'
+                    )
         return insts
 
     def get_succeeding_instances(
@@ -1834,7 +1851,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
     def show(self, interactive: bool = True) -> Dash: ...
     @overload
     def show(self, interactive: bool = False, figpath: Optional[str] = None, **fwd_params: Optional[object]) -> Optional[Dash]: ...
-    def show(self, interactive: bool = False, figpath: Optional[str] = None, **fwd_params: Optional[object]) -> Optional[Dash]:
+    def show(self, interactive: bool = False, figpath: Optional[str] = None, **fwd_params: Optional[object]) -> Path | Dash | None:
         from netlist_carpentry.core.graph.visualization import CytoscapeGraph, Plotting
 
         if fwd_params is None:
@@ -1843,6 +1860,7 @@ class Module(GraphBuildingMixin, EvaluationMixin, ModuleBfsMixin, ModuleDfsMixin
         G = self.graph()
         v = Plotting(G)
         v.set_labels_default()
+
         if interactive:
             return CytoscapeGraph(G, v.format).get_dash_graph(**fwd_params)
         v.show(figpath=figpath, **fwd_params)

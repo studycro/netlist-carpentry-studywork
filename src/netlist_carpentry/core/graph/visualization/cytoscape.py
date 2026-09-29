@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Dict, List, Optional, Tuple
 
 import dash_cytoscape as cyto
@@ -15,6 +16,13 @@ from netlist_carpentry.core.graph.module_graph import ModuleGraph
 from netlist_carpentry.core.graph.visualization.formatting import Format
 from netlist_carpentry.core.graph.visualization.formatting_types import CytoscapeGraphDict, StyleDict, StylesheetDict
 from netlist_carpentry.core.graph.visualization.visualization_base import VisualizationBase
+
+warnings.warn(
+    f'The current cytoscape implementation {__name__!r} is deprecated and will be removed in v1.0.0. '
+    f"For dynamic graph visualization (similar to the current Dash Cytoscape approach), use 'netlist_carpentry.vis.CytoscapeGraph' instead, which uses ipycytoscape. ",
+    DeprecationWarning,
+    stacklevel=3,
+)
 
 
 class CytoscapeGraph(VisualizationBase):

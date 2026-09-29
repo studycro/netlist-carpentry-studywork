@@ -48,7 +48,14 @@ class P2VTransformer:
         """
         self._constant_wire_segments: Dict[str, Dict[str, WireSegment]] = {}
 
-    def save_circuit2v(self, path: os.PathLike[str], circuit: Circuit, overwrite: bool = False, max_wname_length: NonNegativeInt = 0) -> None:
+    def save_circuit2v(
+        self,
+        path: os.PathLike[str],
+        circuit: Circuit,
+        overwrite: bool = False,
+        max_wname_length: NonNegativeInt = 0,
+        save_instance_names: bool = False,
+    ) -> None:
         LOG.debug(f'Saving Verilog representation of circuit {circuit.name} to {path}...')
         start = time.time()
         path = Path(path)
@@ -61,11 +68,11 @@ class P2VTransformer:
             f.write(
                 f'// Generated with Netlist Carpentry {version("netlist-carpentry")}, {datetime.datetime.now().strftime("%d. %B %Y, %H:%M:%S")}\n\n'
             )
-            f.write(self.circuit2v(circuit, max_wname_length))
+            f.write(self.circuit2v(circuit, max_wname_length, save_instance_names))
         LOG.debug(f'Saved Verilog representation of circuit {circuit.name} to {path} in {time.time() - start:.3f} seconds!')
 
-    def circuit2v(self, circuit: Circuit, max_wname_length: NonNegativeInt = 0) -> str:
-        return '\n\n\n'.join(self.module2v(module, max_wname_length) for module in circuit)
+    def circuit2v(self, circuit: Circuit, max_wname_length: NonNegativeInt = 0, save_instance_names: bool = False) -> str:
+        return '\n\n\n'.join(self.module2v(module, max_wname_length, save_instance_names) for module in circuit)
 
     def _shorten_wire_names(self, module: Module, max_wname_length: NonNegativeInt = 0) -> None:
         idx = 0
@@ -82,7 +89,7 @@ class P2VTransformer:
             w = module.wires[wname]
             w.set_name(shortname)
 
-    def module2v(self, module: Module, max_wname_length: NonNegativeInt = 0) -> str:
+    def module2v(self, module: Module, max_wname_length: NonNegativeInt = 0, save_instance_names: bool = False) -> str:
         LOG.debug(f'Writing module {module.name}...')
         if max_wname_length:
             self._shorten_wire_names(module, max_wname_length)
@@ -95,7 +102,7 @@ class P2VTransformer:
         LOG.debug(f'\tCollecting {len(module.wires)} wire(s)...')
         wires = self._module_wires2v(module)
         LOG.debug(f'\tCollecting {len(module.instances)} instance(s)...')
-        instances = self._module_instances2v(module)
+        instances = self._module_instances2v(module, save_instance_names)
         LOG.debug(f'\tCollecting miscellaneous content of module {module.name}...')
         constant_wires = self._constant_wires2v(module)
         port_wires = self._port2wire_wires2v(module)
@@ -118,11 +125,11 @@ class P2VTransformer:
         defs = ''.join(f'\n\t\t{self.wire2v(w)}' for w in module.wires.values() if w.name not in module.ports)
         return place_holder + defs + '\n' if defs else ''
 
-    def _module_instances2v(self, module: Module) -> str:
+    def _module_instances2v(self, module: Module, save_instance_names: bool = False) -> str:
         place_holder = '\t// Primitive Gates and Submodule Instances'
-        return place_holder + '\n' + ''.join(self.instance2v(i) for i in module.instances.values()) if module.instances else ''
+        return place_holder + '\n' + ''.join(self.instance2v(i, save_instance_names) for i in module.instances.values()) if module.instances else ''
 
-    def instance2v(self, instance: Instance) -> str:
+    def instance2v(self, instance: Instance, save_instance_names: bool = False) -> str:
         """
         Transform a Python object into a Verilog instance.
 
@@ -130,6 +137,8 @@ class P2VTransformer:
 
         Args:
             instance (Instance): The instance to be transformed into Verilog.
+            save_instance_names (bool, optional): Whether to add the instance name and type. If True, primitives will
+                look like `assign a = b & c; // AndGate myAndGate`. Defaults to False.
 
         Returns:
             str: The Verilog representation of the instance.
@@ -137,13 +146,21 @@ class P2VTransformer:
         if instance.has_unconnected_port_segments:
             LOG.warn(f'Instance {instance.raw_path} has unconnected port segments!')
         if instance.is_primitive:
-            return self._instance_primitive2v(instance)
+            return self._instance_primitive2v(instance, save_instance_names)
         ports_str = self._instance_ports2v(instance)
         inst_base = f'{instance.instance_type} {instance._verilog_parameters()}{instance.name}({ports_str});'
         return '\n' + ''.join('\t\t' + line + '\n' for line in inst_base.splitlines())
 
-    def _instance_primitive2v(self, instance: Instance) -> str:
-        return ''.join('\t\t' + line + '\n' for line in instance.verilog.splitlines())
+    def _instance_primitive2v(self, instance: Instance, save_instance_names: bool) -> str:
+        line_cnt = len(instance.verilog.splitlines())
+        lines = f' ({line_cnt} lines)' if line_cnt > 1 else ''
+        inst_names = f'\t// {instance.__class__.__name__} {instance.name}{lines}\n' if save_instance_names else '\n'
+        if line_cnt > 1 and save_instance_names:
+            start = f'\t// Start of {instance.__class__.__name__} {instance.name}'
+            vcode = '\n'.join([instance.verilog.splitlines()[0] + start, *instance.verilog.splitlines()[1:]])
+        else:
+            vcode = instance.verilog
+        return '\n'.join(f'\t\t{line}' for line in vcode.splitlines()) + inst_names
 
     def _instance_ports2v(self, instance: Instance) -> str:
         ports_strs = []
@@ -396,18 +413,20 @@ class P2VTransformer:
             str: The Verilog string representation of the port.
 
         Example:
+            ```python
             >>> module = Module(name='m')
             >>> port = module.create_port('port1', 'input', width=8)
             >>> transformer = P2VTransformer()
             >>> transformer.port2v(port)
             'input\twire\t[7:0]\tport1'
+
+            ```
         """
         if port.name in port.parent.wires:
             w = port.parent.wires[port.name]
             if any(ws.path not in port.connected_wire_segments.values() for ws in w.segments.values()):
-                raise VerilogSyntaxError(
-                    f'Encountered a wire {w.raw_path} that has the same name as a module port, but is not connected fully to said port!'
-                )
+                err_msg = f'Encountered a wire {w.raw_path!r} that has the same name as a module port, but is not connected fully to said port!'
+                raise VerilogSyntaxError(err_msg)
         net_type = 'wire' if port.name not in port.parent.wires else self._net_type(port.parent.wires[port.name])
         offset = min(port.segments.keys())
         correct_indexing = f'[{port.width + offset - 1}:{offset}]' if port.msb_first else f'[{offset}:{port.width + offset - 1}]'

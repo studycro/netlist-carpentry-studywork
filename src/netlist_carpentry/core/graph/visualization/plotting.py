@@ -23,6 +23,11 @@ class Plotting(VisualizationBase):
         for node in self.graph.nodes:
             if 'ndata' in self.graph.nodes[node]:  # type: ignore[misc]
                 self.graph.nodes[node].pop('ndata')  # type: ignore[misc]
+        for edge in self.graph.edges:
+            if 'dr_seg' in self.graph.edges[edge] and self.graph.edges[edge]['dr_seg'] is None:  # type: ignore[misc]
+                self.graph.edges[edge].pop('dr_seg')  # type: ignore[misc]
+            if 'ld_seg' in self.graph.edges[edge] and self.graph.edges[edge]['ld_seg'] is None:  # type: ignore[misc]
+                self.graph.edges[edge].pop('ld_seg')  # type: ignore[misc]
 
     def build_figure(self, figsize: Tuple[float, float] = (10, 8)) -> Figure:
         """Create a matplotlib Figure of the graph with the current formatting rules.

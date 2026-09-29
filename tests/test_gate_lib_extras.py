@@ -108,7 +108,7 @@ def test_read_bram() -> None:
     assert isinstance(c.first.instances['ram'], BRAM)
 
     c.optimize()
-    c.write('tests/files/gen/bram_out.v', overwrite=True)
+    c.write('tests/files/gen/bram_out.v', overwrite=True, save_instance_names=True)
 
     p = run_eqy(['tests/files/test_mem.v'], ['tests/files/gen/bram_out.v'], 'test_mem', 'test_mem')
     assert p.returncode == 0
@@ -259,7 +259,7 @@ def test_mem_complex() -> None:  # STRUCTURAL COMPARISON
     assert ram.parameters.WR_PRIORITY_MASK.signals == {idx: Signal.LOW for idx in range(4)}
     assert ram.parameters.WR_WIDE_CONTINUATION.signals == {1: Signal.LOW, 0: Signal.LOW}
 
-    c.write('tests/files/gen/mem_complex_out.v', overwrite=True)
+    c.write('tests/files/gen/mem_complex_out.v', overwrite=True, save_instance_names=True)
 
     p = run_eqy(['tests/files/mem_complex.v'], ['tests/files/gen/mem_complex_out.v'], 'mem_complex', 'mem_complex', overwrite=True)
     assert p.returncode == 0
@@ -273,7 +273,7 @@ def test_mem_complex_small(read_config: ReadConfig) -> None:  # LOGICAL COMPARIS
     assert isinstance(ram, BRAM)
 
     c.optimize()
-    c.write('tests/files/gen/mem_complex_out_small.v', overwrite=True)
+    c.write('tests/files/gen/mem_complex_out_small.v', overwrite=True, save_instance_names=True)
 
     p = run_equiv(
         ['tests/files/mem_complex_small.v'],
@@ -288,7 +288,7 @@ def test_mem_complex_small(read_config: ReadConfig) -> None:  # LOGICAL COMPARIS
 def test_mem_complex_small_sim(read_config: ReadConfig) -> None:  # "PROOF" BY TESTBENCH
     c = read(read_config)
     c.optimize()
-    c.write('tests/files/gen/mem_complex_out_small.v', overwrite=True)
+    c.write('tests/files/gen/mem_complex_out_small.v', overwrite=True, save_instance_names=True)
     ram = c.first.instances['ram']
     ram.verilog
     proc = _setup_run_vfile('mem_complex_small', Path('tests/files/mem_complex_small.v'))

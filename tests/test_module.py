@@ -25,7 +25,7 @@ from netlist_carpentry.core.exceptions import (
     PathResolutionError,
     SingleOwnershipError,
     StructureMismatchError,
-    UnsupportedOperationError,
+    VerilogSyntaxError,
     WidthMismatchError,
 )
 from netlist_carpentry.core.graph.module_graph import ModuleGraph
@@ -41,6 +41,7 @@ from netlist_carpentry.core.netlist_elements.instance import Instance
 from netlist_carpentry.core.netlist_elements.mixins.metadata import METADATA_DICT
 from netlist_carpentry.core.netlist_elements.module import Module
 from netlist_carpentry.core.netlist_elements.wire_segment import WIRE_SEGMENT_0
+from netlist_carpentry.io.write.py2v import P2VTransformer
 from netlist_carpentry.utils.gate_factory import adff, adffe
 from netlist_carpentry.utils.gate_lib import ADFFE, DFF, AndGate
 
@@ -680,6 +681,21 @@ def test_create_port(empty_module: Module, locked_module: Module) -> None:
     assert LOG.warns_quantity == warns + 1
     assert inv_p.direction is Dir.UNKNOWN
 
+    p_with_w = empty_module.create_port('pWithW', 'in', width=4, offset=4, create_associated_wire=True)
+    assert empty_module.ports['pWithW'] is p_with_w
+    assert empty_module.ports['pWithW'].width == 4
+    assert empty_module.ports['pWithW'].offset == 4
+    assert empty_module.ports['pWithW'].is_connected
+    assert 'pWithW' in empty_module.wires
+    assert empty_module.wires['pWithW'].width == 4
+    assert empty_module.wires['pWithW'].offset == 4
+    assert empty_module.wires['pWithW'].connections.fully_connected_ports == {p_with_w.path}
+
+    empty_module.create_wire('alr_created_w')
+    match_str = "Cannot auto-create wire 'alr_created_w' for port 'alr_created_w': A wire with this name already exists!"
+    with pytest.raises(IdentifierConflictError, match=match_str):
+        empty_module.create_port('alr_created_w', create_associated_wire=True)
+
 
 def test_create_port_check_dependencies(connected_module: Module) -> None:
     w_path = WireSegmentPath(raw='test_module1.in1.0')
@@ -921,12 +937,12 @@ def test_connect(standard_module: Module) -> None:
     p = standard_module.ports['test_port2']
     p.segments.clear()
     p.create_port_segment(0)
-    assert w.connected_port_segments == {0: []}
+    assert w.connections == {0: []}
     assert p[0].ws_path == WIRE_SEGMENT_X.path
     assert not p.is_connected_partly
 
     standard_module.connect(w[0], p[0])
-    assert w.connected_port_segments == {0: [p[0]]}
+    assert w.connections == {0: [p[0]]}
     assert p[0].ws_path == w[0].path
 
     standard_module.disconnect(p[0])
@@ -954,10 +970,6 @@ def test_connect(standard_module: Module) -> None:
         standard_module.connect(w[0], p[0])
 
     standard_module.disconnect(p)
-    with pytest.raises(UnsupportedOperationError):
-        standard_module.connect(p, p[0])
-
-    standard_module.disconnect(p)
     standard_module.change_mutability(is_now_locked=True)
     standard_module.connect(w[0], p[0])
     assert p.is_unconnected
@@ -967,6 +979,14 @@ def test_connect(standard_module: Module) -> None:
     standard_module.connect(w[0], p[0])
     assert p.is_unconnected
 
+    p4bit = standard_module.create_port('p4bit', direction=Dir.IN, width=4, offset=4)
+    w4bit = standard_module.create_wire('w4bit', width=4, offset=2)
+    standard_module.connect(w4bit, p4bit)
+    assert p4bit.is_connected
+    assert w4bit.connections == {2: [p4bit[4]], 3: [p4bit[5]], 4: [p4bit[6]], 5: [p4bit[7]]}
+    for i in range(4):
+        assert p4bit[i + 4].ws_path == w4bit[i + 2].path
+
 
 def test_connect_full_port_wire(standard_module: Module) -> None:
     standard_module.create_wire('test_wire2', width=8)
@@ -975,12 +995,12 @@ def test_connect_full_port_wire(standard_module: Module) -> None:
     p = standard_module.ports['test_port2']
     p.segments.clear()
     p.create_port_segments(8)
-    assert w.connected_port_segments == {0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []}
+    assert w.connections == {0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []}
     assert p[0].ws_path == WIRE_SEGMENT_X.path
     assert not p.is_connected_partly
 
     standard_module.connect(w, p)
-    assert w.connected_port_segments == {0: [p[0]], 1: [p[1]], 2: [p[2]], 3: [p[3]], 4: [p[4]], 5: [p[5]], 6: [p[6]], 7: [p[7]]}
+    assert w.connections == {0: [p[0]], 1: [p[1]], 2: [p[2]], 3: [p[3]], 4: [p[4]], 5: [p[5]], 6: [p[6]], 7: [p[7]]}
     assert p[0].ws_path == w[0].path
     assert p.is_connected
 
@@ -1001,9 +1021,85 @@ def test_connect_inst_port(standard_module: Module) -> None:
     p = inst.ports['test_inst_port']
 
     standard_module.connect(w[0], p[0])
-    assert w.connected_port_segments == {0: [p[0]]}
+    assert w.connections == {0: [p[0]]}
     assert p[0].ws_path == w[0].path
     assert inst.connections[p.name][0] == w[0].path
+
+
+def test_connect_module_port() -> None:
+    m = Module(name='m')
+    p1 = m.create_port('P1', 'in')
+    p2 = m.create_port('P2', 'in')
+    p3 = m.create_port('P3', 'out')
+    inst = m.create_instance(AndGate, 'and_inst')
+    m.connect(p1, inst.ports['A'])
+    m.connect(p2, inst.ports['B'])
+    m.connect(inst.ports['Y'], p3)
+
+    assert p1.connected_wires == {WirePath(raw='m.P1')}
+    assert p2.connected_wires == {WirePath(raw='m.P2')}
+    assert p3.connected_wires == {WirePath(raw='m.P3')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t\t\tP1,\n\t\tinput\twire\t\t\tP2,\n\t\toutput\twire\t\t\tP3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tP3 = P1 & P2;\nendmodule'
+    assert P2VTransformer().module2v(m) == target_vcode
+
+    m = Module(name='m')
+    p4 = m.create_port('P4', 'in')
+    p5 = m.create_port('P5', 'in')
+    p6 = m.create_port('P6', 'out')
+    inst = m.create_instance(AndGate, 'and_inst2')
+    m.connect(p4, inst.ports['A'], new_wire_name='ABC')  # Now with different wire names
+    m.connect(p5, inst.ports['B'], new_wire_name='DEF')
+    m.connect(inst.ports['Y'], p6, new_wire_name='GHI')
+    assert p4.connected_wires == {WirePath(raw='m.ABC')}
+    assert p5.connected_wires == {WirePath(raw='m.DEF')}
+    assert p6.connected_wires == {WirePath(raw='m.GHI')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t\t\tP4,\n\t\tinput\twire\t\t\tP5,\n\t\toutput\twire\t\t\tP6\n\t);\n\t// Wire Definitions\n\t\twire\t\tABC;\n\t\twire\t\tDEF;\n\t\twire\t\tGHI;\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tGHI = ABC & DEF;\t// AndGate and_inst2\n\t// Port<->Wire Connections\n\t\tassign ABC\t= P4;\n\t\tassign DEF\t= P5;\n\t\tassign P6\t= GHI;\n\nendmodule'
+    assert P2VTransformer().module2v(m, save_instance_names=True) == target_vcode
+
+
+def test_connect_module_port_segments() -> None:
+    m = Module(name='m')
+    p1 = m.create_port('P1', 'in')
+    p2 = m.create_port('P2', 'in', offset=2)
+    p3 = m.create_port('P3', 'out', offset=4)
+    inst = m.create_instance(AndGate, 'and_inst')
+    m.connect(p1[0], inst.ports['A'][0])
+    m.connect(p2[2], inst.ports['B'][0])
+    m.connect(inst.ports['Y'][0], p3[4])
+    assert p1.connected_wires == {WirePath(raw='m.P1')}
+    assert p2.connected_wires == {WirePath(raw='m.P2')}
+    assert p3.connected_wires == {WirePath(raw='m.P3')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t\t\tP1,\n\t\tinput\twire\t\t\tP2,\n\t\toutput\twire\t\t\tP3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tP3 = P1 & P2;\nendmodule'
+    assert P2VTransformer().module2v(m) == target_vcode
+
+    p1.create_port_segment(1)
+    p2.create_port_segment(3)
+    p3.create_port_segment(5)
+    inst.ports['A'].create_port_segment(1)
+    inst.ports['B'].create_port_segment(1)
+    inst.ports['Y'].create_port_segment(1)
+    m.connect(p1[1], inst.ports['A'][1])
+    m.connect(p2[3], inst.ports['B'][1])
+    m.connect(inst.ports['Y'][1], p3[5])
+    assert p1.connected_wires == {WirePath(raw='m.P1')}
+    assert p2.connected_wires == {WirePath(raw='m.P2')}
+    assert p3.connected_wires == {WirePath(raw='m.P3')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t[1:0]\tP1,\n\t\tinput\twire\t[3:2]\tP2,\n\t\toutput\twire\t[5:4]\tP3\n\t);\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tP3 = P1 & P2;\nendmodule'
+    assert P2VTransformer().module2v(m) == target_vcode
+
+    m = Module(name='m')
+    p4 = m.create_port('P4', 'in')
+    p5 = m.create_port('P5', 'in', offset=2)
+    p6 = m.create_port('P6', 'out', offset=4)
+    inst = m.create_instance(AndGate, 'and_inst2')
+    m.connect(p4[0], inst.ports['A'], new_wire_name='ABC')  # Now with different wire names
+    m.connect(p5, inst.ports['B'][0], new_wire_name='DEF')
+    m.connect(inst.ports['Y'][0], p6[4], new_wire_name='GHI')
+    assert p4.connected_wires == {WirePath(raw='m.ABC')}
+    assert p5.connected_wires == {WirePath(raw='m.DEF')}
+    assert p6.connected_wires == {WirePath(raw='m.GHI')}
+    target_vcode = 'module m\n\t(\n\t\tinput\twire\t\t\tP4,\n\t\tinput\twire\t\t\tP5,\n\t\toutput\twire\t\t\tP6\n\t);\n\t// Wire Definitions\n\t\twire\t\tABC;\n\t\twire\t\tDEF;\n\t\twire\t\tGHI;\n\n\t// Primitive Gates and Submodule Instances\n\t\tassign\tGHI = ABC & DEF;\t// AndGate and_inst2\n\t// Port<->Wire Connections\n\t\tassign ABC\t= P4;\n\t\tassign DEF\t= P5;\n\t\tassign P6\t= GHI;\n\nendmodule'
+    assert P2VTransformer().module2v(m, save_instance_names=True) == target_vcode
 
 
 def test_connect_ports(standard_module: Module) -> None:
@@ -1124,11 +1220,11 @@ def test_disconnect_inst_port(connected_module: Module) -> None:
     p = inst.ports['A']
     pseg = p[0]
 
-    assert len(w.connected_port_segments[0]) == 2
-    assert pseg in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 2
+    assert pseg in w.connections[0]
     connected_module.disconnect(pseg)
-    assert len(w.connected_port_segments[0]) == 1
-    assert pseg not in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 1
+    assert pseg not in w.connections[0]
     assert pseg.ws_path == WIRE_SEGMENT_X.path
     assert inst.connections[p.name][0] == WIRE_SEGMENT_X.path
 
@@ -1139,13 +1235,66 @@ def test_disconnect_inst_port_path(connected_module: Module) -> None:
     p = inst.ports['A']
     pseg = p[0]
 
-    assert len(w.connected_port_segments[0]) == 2
-    assert pseg in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 2
+    assert pseg in w.connections[0]
     connected_module.disconnect(p.path)
-    assert len(w.connected_port_segments[0]) == 1
-    assert pseg not in w.connected_port_segments[0]
+    assert len(w.connections[0]) == 1
+    assert pseg not in w.connections[0]
     assert pseg.ws_path == WIRE_SEGMENT_X.path
     assert inst.connections[p.name][0] == WIRE_SEGMENT_X.path
+
+
+def test_disconnect_module_port(connected_module: Module) -> None:
+    pi = connected_module.create_port('I', 'in', create_associated_wire=True)
+    w = connected_module.wires['I']
+    assert pi.is_connected
+    assert w[0].port_segments == [pi[0]]
+    connected_module.disconnect(pi)
+    assert pi.is_unconnected
+    assert w[0].port_segments == []
+    w.set_name('I2')
+    assert w.name == 'I2'
+    w2 = connected_module.create_wire('I')
+    assert w2[0].port_segments == []
+    connected_module.connect(w2, pi)
+    assert pi.is_connected
+    assert w2[0].port_segments == [pi[0]]
+
+
+def test_disconnect_module_port_out(connected_module: Module) -> None:
+    p = connected_module.create_port('OUT', 'out', create_associated_wire=True)
+    w = connected_module.wires['OUT']
+    w.set_name('out_new')
+    assert 'assign OUT\t= out_new;' in P2VTransformer()._port2wire_wires2v(connected_module)
+    assert p.is_connected
+    assert not p.is_unconnected
+    assert p.connected_wires == {w.path}
+    w.set_name('OUT')
+    connected_module.disconnect(p)
+    assert not p.is_connected
+    assert p.is_unconnected
+    assert p.connected_wires == {0} - {0}  # Funny eyes <=> empty set
+    match_str = re.escape("Encountered a wire 'test_module1.OUT' that has the same name as a module port, but is not connected fully to said port!")
+    with pytest.raises(VerilogSyntaxError, match=match_str):
+        P2VTransformer().module2v(connected_module)
+
+
+def test_disconnect_module_port_in(connected_module: Module) -> None:
+    p = connected_module.create_port('IN', 'in', create_associated_wire=True)
+    w = connected_module.wires['IN']
+    w.set_name('in_new')
+    assert 'assign in_new\t= IN;' in P2VTransformer()._port2wire_wires2v(connected_module)
+    assert p.is_connected
+    assert not p.is_unconnected
+    assert p.connected_wires == {w.path}
+    w.set_name('IN')
+    connected_module.disconnect(p)
+    assert not p.is_connected
+    assert p.is_unconnected
+    assert p.connected_wires == {0} - {0}  # Funny eyes <=> empty set
+    match_str = re.escape("Encountered a wire 'test_module1.IN' that has the same name as a module port, but is not connected fully to said port!")
+    with pytest.raises(VerilogSyntaxError, match=match_str):
+        P2VTransformer().module2v(connected_module)
 
 
 def test_reconnect(connected_module: Module) -> None:
@@ -1173,6 +1322,18 @@ def test_reconnect(connected_module: Module) -> None:
 
     with pytest.raises(WidthMismatchError):
         connected_module.reconnect(in4, in7)
+
+    o2 = connected_module.create_port('O2', create_associated_wire=True)
+    o3 = connected_module.create_port('O3')
+    and_inst = connected_module.create_instance(AndGate, 'and_inst2')
+    connected_module.connect(o2[0].ws, and_inst.ports['Y'])
+    assert and_inst.connections['Y'] == {0: WireSegmentPath(raw='test_module1.O2.0')}
+    assert o2.is_connected
+    assert o3.is_unconnected
+    connected_module.reconnect(o2, o3)
+    assert and_inst.connections['Y'] == {0: WireSegmentPath(raw='test_module1.O2.0')}
+    assert o2.is_unconnected
+    assert o3.is_connected
 
 
 def test_update_module_instances() -> None:
@@ -1994,20 +2155,20 @@ def test_build_graph(connected_module: Module) -> None:
     assert len(g.in_edges('dff_inst')) == 3
 
     # Edge connections - combinational
-    assert g.edges['in1', 'and_inst', 'in1§A'] == {'ename': 'in1', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['in2', 'and_inst', 'in2§B'] == {'ename': 'in2', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['in3', 'or_inst', 'in3§A'] == {'ename': 'in3', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['in4', 'or_inst', 'in4§B'] == {'ename': 'in4', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['and_inst', 'xor_inst', 'Y§A'] == {'ename': 'wire_and', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['or_inst', 'xor_inst', 'Y§B'] == {'ename': 'wire_or', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['xor_inst', 'not_inst', 'Y§A'] == {'ename': 'wire_xor', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['not_inst', 'out', 'Y§out'] == {'ename': 'out', 'dr_seg': 0, 'ld_seg': 0}
+    assert g.edges['in1', 'and_inst', 'in1§A'] == {'ename': 'in1', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['in2', 'and_inst', 'in2§B'] == {'ename': 'in2', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['in3', 'or_inst', 'in3§A'] == {'ename': 'in3', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['in4', 'or_inst', 'in4§B'] == {'ename': 'in4', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['and_inst', 'xor_inst', 'Y§A'] == {'ename': 'wire_and', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['or_inst', 'xor_inst', 'Y§B'] == {'ename': 'wire_or', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['xor_inst', 'not_inst', 'Y§A'] == {'ename': 'wire_xor', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['not_inst', 'out', 'Y§out'] == {'ename': 'out', 'dr_seg': None, 'ld_seg': None, 'width': 1}
 
     # Edge connections - sequential
-    assert g.edges['xor_inst', 'dff_inst', 'Y§D'] == {'ename': 'wire_xor', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['clk', 'dff_inst', 'clk§CLK'] == {'ename': 'clk', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['rst', 'dff_inst', 'rst§RST'] == {'ename': 'rst', 'dr_seg': 0, 'ld_seg': 0}
-    assert g.edges['dff_inst', 'out_ff', 'Q§out_ff'] == {'ename': 'out_ff', 'dr_seg': 0, 'ld_seg': 0}
+    assert g.edges['xor_inst', 'dff_inst', 'Y§D'] == {'ename': 'wire_xor', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['clk', 'dff_inst', 'clk§CLK'] == {'ename': 'clk', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['rst', 'dff_inst', 'rst§RST'] == {'ename': 'rst', 'dr_seg': None, 'ld_seg': None, 'width': 1}
+    assert g.edges['dff_inst', 'out_ff', 'Q§out_ff'] == {'ename': 'out_ff', 'dr_seg': None, 'ld_seg': None, 'width': 1}
 
     # Nodes
     assert len(g.nodes) == 5 + 8  # 5 instances + 8 in/out ports

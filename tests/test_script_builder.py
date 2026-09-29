@@ -48,7 +48,6 @@ def test_build_script_params() -> None:
             insbuf=False,
             process_memory=False,
             share=True,
-            techmap_paths=[Path('tests/files/pmux2mux.v')],
         )
     with open('tests/files/test_script') as f:
         content = f.read()
@@ -59,7 +58,7 @@ def test_build_script_params() -> None:
     assert 'read_verilog ' in content and '/tests/files/thermo_enc.v' in content
     assert 'hierarchy -top thermo_enc' in content
     assert 'memory -nomap' in content
-    assert 'techmap -map' in content and 'tests/files/pmux2mux.v' in content
+    assert 'techmap -map' not in content
     assert 'share -aggressive' in content
     assert 'opt; clean' in content
     assert 'insbuf; proc' not in content

@@ -83,20 +83,20 @@ def test_get_interfaces(standard_match: Match, mod_module: Module) -> None:
     # Thus only the connections between the pattern instances are considered.
     target_if = {
         0: {
-            ('xor_inst', 'A', 0): {('and_inst', 'Y', 0)},
-            ('xor_inst', 'B', 0): {('or_inst', 'Y', 0)},
-            ('xor_inst', 'Y', 0): {('dff_inst', 'D', 0), ('not_inst', 'A', 0)},
-            ('not_inst', 'A', 0): {('xor_inst', 'Y', 0)},
-            ('not_inst', 'Y', 0): {(None, 'out', 0), ('xor2_inst', 'A', 0)},
+            ('xor_inst', 'A', None): {('and_inst', 'Y', None)},
+            ('xor_inst', 'B', None): {('or_inst', 'Y', None)},
+            ('xor_inst', 'Y', None): {('dff_inst', 'D', None), ('not_inst', 'A', None)},
+            ('not_inst', 'A', None): {('xor_inst', 'Y', None)},
+            ('not_inst', 'Y', None): {(None, 'out', None), ('xor2_inst', 'A', None)},
         },
         1: {
-            ('xor2_inst', 'A', 0): {('not_inst', 'Y', 0)},
+            ('xor2_inst', 'A', None): {('not_inst', 'Y', None)},
             # xor2_inst , 'B'
-            ('xor2_inst', 'Y', 0): {('not2_inst', 'A', 0)},
-            ('not2_inst', 'A', 0): {('xor2_inst', 'Y', 0)},
+            ('xor2_inst', 'Y', None): {('not2_inst', 'A', None)},
+            ('not2_inst', 'A', None): {('xor2_inst', 'Y', None)},
             # not2_inst , 'Y'
         },
-        2: {('not3_inst', 'A', 0): {('xor3_inst', 'Y', 0)}, ('xor3_inst', 'Y', 0): {('not3_inst', 'A', 0)}},
+        2: {('not3_inst', 'A', None): {('xor3_inst', 'Y', None)}, ('xor3_inst', 'Y', None): {('not3_inst', 'A', None)}},
     }
     found_if = standard_match.get_interfaces(mod_module.graph())
 

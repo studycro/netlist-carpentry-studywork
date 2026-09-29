@@ -474,7 +474,7 @@ class PortSegment(_Segment, BaseModel):
             )
         if self.is_unconnected:
             return None
-        return self.parent.module.wires[self.ws_path.parent.name].driver()[self.index]
+        return self.parent.module.wires[self.ws_path.parent.name].driver()[self.index][0]
 
     def loads(self) -> List[PortSegment]:
         """
