@@ -11,7 +11,7 @@ from netlist_carpentry.io.write.py2v import P2VTransformer as P2V
 from netlist_carpentry.routines import opt_constant
 from netlist_carpentry.routines.opt.constant_folds import opt_constant_mux_inputs, opt_constant_propagation
 from netlist_carpentry.utils.gate_factory import dlatch
-from netlist_carpentry.utils.gate_lib import ADFFE, AndGate, NandGate, NorGate, NotGate, OrGate, XnorGate, XorGate
+from netlist_carpentry.utils.gate_lib import ADFFE, AndGate, Multiplexer, NandGate, NorGate, NotGate, OrGate, XnorGate, XorGate
 from tests.utils import save_results
 
 def _binary_gate_module(gate_cls: type, const: Signal, const_port: str = 'B') -> Module:
@@ -379,6 +379,99 @@ def test_opt_constant_propagation_rule_free_input_keeps_other_loads() -> None:
     x_wire = module.ports['x'][0].raw_ws_path
     assert module.ports['y'][0].raw_ws_path == x_wire
     assert module.instances['other'].ports['A'][0].raw_ws_path == x_wire
+
+@pytest.mark.parametrize('s_value, selected, other', [(Signal.LOW, 'x0', 'x1'), (Signal.HIGH, 'x1', 'x0')])
+def test_opt_constant_propagation_rule_mux_constant_select_passes_selected_input(s_value: Signal, selected: str, other: str) -> None:
+    module = Module(name='m')
+    x0 = module.create_port('x0', Direction.IN)
+    x1 = module.create_port('x1', Direction.IN)
+    y = module.create_port('y', Direction.OUT)
+    inst = module.create_instance(Multiplexer, 'inst')
+    module.connect(x0, inst.ports['D0'])
+    module.connect(x1, inst.ports['D1'])
+    module.connect(inst.ports['Y'], y)
+    inst.ports['S'].tie_signal(s_value, 0)
+
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'][0].raw_ws_path == module.ports[selected][0].raw_ws_path
+    assert module.ports['y'][0].raw_ws_path != module.ports[other][0].raw_ws_path
+
+
+@pytest.mark.parametrize('s_value, selected, const', [(Signal.LOW, 'D0', Signal.HIGH), (Signal.HIGH, 'D1', Signal.LOW)])
+def test_opt_constant_propagation_rule_mux_constant_select_constant_input_is_constant(s_value: Signal, selected: str, const: Signal) -> None:
+    module = Module(name='m')
+    x = module.create_port('x', Direction.IN)
+    y = module.create_port('y', Direction.OUT)
+    inst = module.create_instance(Multiplexer, 'inst')
+    other = 'D1' if selected == 'D0' else 'D0'
+    module.connect(x, inst.ports[other])
+    inst.ports[selected].tie_signal(const, 0)
+    module.connect(inst.ports['Y'], y)
+    inst.ports['S'].tie_signal(s_value, 0)
+
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'].is_tied_defined
+    assert module.ports['y'].signal is const
+
+
+@pytest.mark.parametrize('s_undefined', [False, True], ids=['free_select', 'undefined_select'])
+def test_opt_constant_propagation_rule_mux_non_constant_select_is_not_folded(s_undefined: bool) -> None:
+    module = Module(name='m')
+    x0 = module.create_port('x0', Direction.IN)
+    x1 = module.create_port('x1', Direction.IN)
+    y = module.create_port('y', Direction.OUT)
+    inst = module.create_instance(Multiplexer, 'inst')
+    module.connect(x0, inst.ports['D0'])
+    module.connect(x1, inst.ports['D1'])
+    module.connect(inst.ports['Y'], y)
+    if s_undefined:
+        inst.ports['S'].tie_signal(Signal.UNDEFINED, 0)
+    else:
+        module.connect(module.create_port('s', Direction.IN), inst.ports['S'])
+
+    assert not opt_constant_propagation(module)
+    assert 'inst' in module.instances
+    assert module.instances['inst'].ports['Y'][0].raw_ws_path == module.ports['y'][0].raw_ws_path
+
+
+def test_opt_constant_propagation_rule_mux_constant_select_mixed_bits() -> None:
+    module = Module(name='m')
+    x0 = module.create_port('x0', Direction.IN, width=2)
+    x = module.create_port('x', Direction.IN)
+    y = module.create_port('y', Direction.OUT, width=2)
+    inst = module.create_instance(Multiplexer, 'inst', {'WIDTH': 2})
+    module.connect(x0, inst.ports['D0'])
+    inst.ports['D1'].tie_signal(1, 0)
+    module.connect(x[0], inst.ports['D1'][1])
+    module.connect(inst.ports['Y'], y)
+    inst.ports['S'].tie_signal(Signal.HIGH, 0)
+
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'][0].raw_ws_path == '1'
+    assert module.ports['y'][1].raw_ws_path == module.ports['x'][0].raw_ws_path
+
+
+@pytest.mark.parametrize('selected', [0, 1, 2, 3])
+def test_opt_constant_propagation_rule_mux_4to1_constant_select(selected: int) -> None:
+    module = Module(name='m')
+    d_ports = [module.create_port(f'd{i}', Direction.IN) for i in range(4)]
+    y = module.create_port('y', Direction.OUT)
+    inst = module.create_instance(Multiplexer, 'inst', {'WIDTH': 1, 'BIT_WIDTH': 2})
+    for i, d in enumerate(d_ports):
+        module.connect(d, inst.ports[f'D{i}'])
+    module.connect(inst.ports['Y'], y)
+    for bit in range(2):
+        inst.ports['S'].tie_signal(Signal.HIGH if (selected >> bit) & 1 else Signal.LOW, bit)
+
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'][0].raw_ws_path == module.ports[f'd{selected}'][0].raw_ws_path
+    for i in range(4):
+        if i != selected:
+            assert module.ports['y'][0].raw_ws_path != module.ports[f'd{i}'][0].raw_ws_path
 
 if __name__ == '__main__':
     file_name = os.path.basename(__file__)
