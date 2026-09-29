@@ -247,6 +247,42 @@ def test_opt_constant_propagation_rule_xnor_high_passes_input(const_port: str) -
     assert 'inst' not in module.instances
     assert module.ports['y'][0].raw_ws_path == module.ports['x'][0].raw_ws_path
 
+def _assert_single_inverter(module: Module) -> None:
+    assert 'inst' not in module.instances
+    assert len(module.instances) == 1
+    inv = next(iter(module.instances.values()))
+    assert inv.instance_type == '§not'
+    assert inv.ports['A'][0].raw_ws_path == module.ports['x'][0].raw_ws_path
+    assert inv.ports['Y'][0].raw_ws_path == module.ports['y'][0].raw_ws_path
+
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_nand_high_inverts_input(const_port: str) -> None:
+    module = _binary_gate_module(NandGate, Signal.HIGH, const_port)
+    assert opt_constant_propagation(module)
+    _assert_single_inverter(module)
+
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_nor_low_inverts_input(const_port: str) -> None:
+    module = _binary_gate_module(NorGate, Signal.LOW, const_port)
+    assert opt_constant_propagation(module)
+    _assert_single_inverter(module)
+
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_xor_high_inverts_input(const_port: str) -> None:
+    module = _binary_gate_module(XorGate, Signal.HIGH, const_port)
+    assert opt_constant_propagation(module)
+    _assert_single_inverter(module)
+
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_xnor_low_inverts_input(const_port: str) -> None:
+    module = _binary_gate_module(XnorGate, Signal.LOW, const_port)
+    assert opt_constant_propagation(module)
+    _assert_single_inverter(module)
+
 if __name__ == '__main__':
     file_name = os.path.basename(__file__)
     pytest.main(args=['-k', file_name])
