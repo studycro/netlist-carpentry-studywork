@@ -11,7 +11,7 @@ from netlist_carpentry.io.write.py2v import P2VTransformer as P2V
 from netlist_carpentry.routines import opt_constant
 from netlist_carpentry.routines.opt.constant_folds import opt_constant_mux_inputs, opt_constant_propagation
 from netlist_carpentry.utils.gate_factory import dlatch
-from netlist_carpentry.utils.gate_lib import ADFFE, AndGate, NandGate, NorGate, OrGate, XnorGate, XorGate
+from netlist_carpentry.utils.gate_lib import ADFFE, AndGate, NandGate, NorGate, NotGate, OrGate, XnorGate, XorGate
 from tests.utils import save_results
 
 def _binary_gate_module(gate_cls: type, const: Signal, const_port: str = 'B') -> Module:
@@ -321,6 +321,64 @@ def test_opt_constant_propagation_rule_unequal_port_widths(a_width: int, b_width
     assert not opt_constant_propagation(module)
     assert 'and_inst' in module.instances
     assert module.ports['y'].is_connected
+
+@pytest.mark.parametrize('creation_order', [['g1', 'g2'], ['g2', 'g1']], ids=['forward', 'reverse'])
+def test_opt_constant_propagation_rule_cascade(creation_order: list[str]) -> None:
+    module = Module(name='m')
+    c = module.create_port('c', Direction.IN)
+    module.create_port('x', Direction.IN)
+    y = module.create_port('y', Direction.OUT)
+    gate_types = {'g1': OrGate, 'g2': XorGate}
+    insts = {name: module.create_instance(gate_types[name], name) for name in creation_order}
+    module.connect(c, insts['g1'].ports['A'])
+    insts['g1'].ports['B'].tie_signal(1, 0)
+    module.connect(insts['g1'].ports['Y'], insts['g2'].ports['A'])
+    module.connect(module.ports['x'], insts['g2'].ports['B'])
+    module.connect(insts['g2'].ports['Y'], y)
+
+    assert opt_constant_propagation(module)
+    assert not {'g1', 'g2'} & set(module.instances)
+    _assert_single_inverter(module)
+
+
+def test_opt_constant_propagation_rule_all_loads_are_reconnected() -> None:
+    module = Module(name='m')
+    x = module.create_port('x', Direction.IN)
+    y = module.create_port('y', Direction.OUT)
+    inst = module.create_instance(AndGate, 'inst')
+    n1 = module.create_instance(NotGate, 'n1')
+    n2 = module.create_instance(NotGate, 'n2')
+    module.connect(x, inst.ports['A'])
+    inst.ports['B'].tie_signal(1, 0)
+    module.connect(inst.ports['Y'], y)
+    module.connect(inst.ports['Y'], n1.ports['A'])
+    module.connect(inst.ports['Y'], n2.ports['A'])
+
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    x_wire = module.ports['x'][0].raw_ws_path
+    assert module.ports['y'][0].raw_ws_path == x_wire
+    assert module.instances['n1'].ports['A'][0].raw_ws_path == x_wire
+    assert module.instances['n2'].ports['A'][0].raw_ws_path == x_wire
+
+
+def test_opt_constant_propagation_rule_free_input_keeps_other_loads() -> None:
+    module = Module(name='m')
+    x = module.create_port('x', Direction.IN)
+    y = module.create_port('y', Direction.OUT)
+    inst = module.create_instance(AndGate, 'inst')
+    other = module.create_instance(NotGate, 'other')
+    module.connect(x, inst.ports['A'])
+    module.connect(x, other.ports['A'])
+    inst.ports['B'].tie_signal(1, 0)
+    module.connect(inst.ports['Y'], y)
+
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert 'other' in module.instances
+    x_wire = module.ports['x'][0].raw_ws_path
+    assert module.ports['y'][0].raw_ws_path == x_wire
+    assert module.instances['other'].ports['A'][0].raw_ws_path == x_wire
 
 if __name__ == '__main__':
     file_name = os.path.basename(__file__)
