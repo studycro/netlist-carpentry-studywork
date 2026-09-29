@@ -14,6 +14,16 @@ from netlist_carpentry.utils.gate_factory import dlatch
 from netlist_carpentry.utils.gate_lib import ADFFE
 from tests.utils import save_results
 
+def _binary_gate_module(gate_cls: type, const: Signal, const_port: str = 'B') -> Module:
+    module = Module(name='m')
+    x = module.create_port('x', Direction.IN)
+    y = module.create_port('y', Direction.OUT)
+    inst = module.create_instance(gate_cls, 'inst')
+    free_port = 'A' if const_port == 'B' else 'B'
+    module.connect(x, inst.ports[free_port])
+    module.connect(inst.ports['Y'], y)
+    inst.ports[const_port].tie_signal(const, 0)
+    return module
 
 @pytest.fixture()
 def mux() -> Circuit:
@@ -71,6 +81,13 @@ def test_opt_constant_propagation(module: Module) -> None:
     assert len(module.instances) == 4
     assert len(module.wires) == 11
     assert module.instances['xor_inst'].ports['A'][0].raw_ws_path == '0'
+
+    #It can be that it will break so here is a potential solution:
+    #assert len(module.instances) == 3
+    #assert len(module.wires) == 10
+    #assert 'xor_inst' not in module.instances  # XOR with constant 0 passes the other input through
+    #assert module.instances['not_inst'].ports['A'][0].raw_ws_path == 'test_module1.wire_or.0'
+    #assert module.instances['dff_inst'].ports['D'][0].raw_ws_path == 'test_module1.wire_or.0'
 
     module.disconnect(module.instances['or_inst'].ports['A'][0])
     module.disconnect(module.instances['or_inst'].ports['B'][0])
