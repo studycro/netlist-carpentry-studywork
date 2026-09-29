@@ -9,15 +9,9 @@ from netlist_carpentry import LOG, Instance, Module, Signal, SignalArray
 from netlist_carpentry.core.exceptions import EvaluationError
 from netlist_carpentry.core.netlist_elements.port_segment import PortSegment
 from netlist_carpentry.core.netlist_elements.wire_segment import WireSegment
-<<<<<<< HEAD
 from netlist_carpentry.utils.gate_lib import DFF, DLatch, NotGate
-from netlist_carpentry.utils.gate_lib_base_classes import BinaryGate, NtoOneGate, PrimitiveGate
-from netlist_carpentry.utils.gate_mixins import ClockMixinProtocol, EnableMixinProtocol, ResetMixinProtocol
-=======
-from netlist_carpentry.utils.gate_lib import DFF, DLatch
-from netlist_carpentry.utils.gate_lib_base_classes import PrimitiveGate
+from netlist_carpentry.utils.gate_lib_base_classes import PrimitiveGate, BinaryGate, NtoOneGate
 from netlist_carpentry.utils.gate_mixins import EnMixin, RstMixin
->>>>>>> main
 
 class _Act(Enum):
     PASS = auto()
@@ -295,10 +289,11 @@ def _opt_constant_propagate_dff(module: Module, inst: DFF) -> bool:
             warn_str = f'Found {ff_id} with disabled Enable signal ({ff_id} never active, except for reset). Constant propagation not implemented for this edge case!'
             LOG.warn(warn_str)
 
-    if inst.ports['D'].is_tied and not _tied_clk(inst) and (not isinstance(inst, EnableMixinProtocol) or _tied_en_active(inst)):
-        _propagate_output_port(module, inst, 'Q', inst.ports['D'].signal_array)  # Propagate data to output
-        propagates = True
-    return propagates
+    if inst.ports['D'].is_tied and not inst.ports['CLK'].is_tied:
+        if not isinstance(inst, EnMixin) or (inst.en_port.is_tied and inst.en_polarity is inst.en_port.signal):  # No EN, or tied EN active
+            _propagate_output_port(module, inst, 'Q', inst.ports['D'].signal_array)  # Propagate data to output
+            return True
+    return False
 
 
 def _opt_constant_propagate_dlatch(module: Module, inst: DLatch) -> bool:
