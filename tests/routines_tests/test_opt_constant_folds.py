@@ -11,7 +11,7 @@ from netlist_carpentry.io.write.py2v import P2VTransformer as P2V
 from netlist_carpentry.routines import opt_constant
 from netlist_carpentry.routines.opt.constant_folds import opt_constant_mux_inputs, opt_constant_propagation
 from netlist_carpentry.utils.gate_factory import dlatch
-from netlist_carpentry.utils.gate_lib import ADFFE, AndGate, NandGate, NorGate, OrGate
+from netlist_carpentry.utils.gate_lib import ADFFE, AndGate, NandGate, NorGate, OrGate, XnorGate, XorGate
 from tests.utils import save_results
 
 def _binary_gate_module(gate_cls: type, const: Signal, const_port: str = 'B') -> Module:
@@ -215,6 +215,37 @@ def test_opt_constant_propagation_rule_nor_high_is_constant(const_port: str) -> 
     assert 'inst' not in module.instances
     assert module.ports['y'].is_tied_defined
     assert module.ports['y'].signal is Signal.LOW
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_and_high_passes_input(const_port: str) -> None:
+    module = _binary_gate_module(AndGate, Signal.HIGH, const_port)
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'][0].raw_ws_path == module.ports['x'][0].raw_ws_path
+
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_or_low_passes_input(const_port: str) -> None:
+    module = _binary_gate_module(OrGate, Signal.LOW, const_port)
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'][0].raw_ws_path == module.ports['x'][0].raw_ws_path
+
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_xor_low_passes_input(const_port: str) -> None:
+    module = _binary_gate_module(XorGate, Signal.LOW, const_port)
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'][0].raw_ws_path == module.ports['x'][0].raw_ws_path
+
+
+@pytest.mark.parametrize('const_port', ['A', 'B'])
+def test_opt_constant_propagation_rule_xnor_high_passes_input(const_port: str) -> None:
+    module = _binary_gate_module(XnorGate, Signal.HIGH, const_port)
+    assert opt_constant_propagation(module)
+    assert 'inst' not in module.instances
+    assert module.ports['y'][0].raw_ws_path == module.ports['x'][0].raw_ws_path
 
 if __name__ == '__main__':
     file_name = os.path.basename(__file__)
