@@ -283,6 +283,45 @@ def test_opt_constant_propagation_rule_xnor_low_inverts_input(const_port: str) -
     assert opt_constant_propagation(module)
     _assert_single_inverter(module)
 
+@pytest.mark.parametrize('gate_cls', [AndGate, NandGate, OrGate, XorGate])
+def test_opt_constant_propagation_rule_undefined_constant_is_not_folded(gate_cls: type) -> None:
+    module = _binary_gate_module(gate_cls, Signal.UNDEFINED)
+    assert not opt_constant_propagation(module)
+    assert 'inst' in module.instances
+    assert module.instances['inst'].ports['Y'][0].raw_ws_path == module.ports['y'][0].raw_ws_path
+
+
+def test_opt_constant_propagation_rule_partial_is_not_folded() -> None:
+    module = Module(name='m')
+    a = module.create_port('a', Direction.IN, width=2)
+    b = module.create_port('b', Direction.IN, width=2)
+    y = module.create_port('y', Direction.OUT, width=2)
+    inst = module.create_instance(XorGate, 'inst', {'A_WIDTH': 2, 'B_WIDTH': 2, 'Y_WIDTH': 2})
+    module.connect(a, inst.ports['A'])
+    module.connect(b, inst.ports['B'])
+    module.connect(inst.ports['Y'], y)
+    module.disconnect(inst.ports['B'][0])
+    inst.ports['B'].tie_signal(1, 0)
+
+    assert not opt_constant_propagation(module)
+    assert list(module.instances) == ['inst']
+
+
+@pytest.mark.parametrize('a_width, b_width', [(4, 8), (8, 4)])
+def test_opt_constant_propagation_rule_unequal_port_widths(a_width: int, b_width: int) -> None:
+    module = Module(name='m')
+    a = module.create_port('a', Direction.IN, width=a_width)
+    y = module.create_port('y', Direction.OUT, width=8)
+    inst = module.create_instance(AndGate, 'and_inst', {'A_WIDTH': a_width, 'B_WIDTH': b_width, 'Y_WIDTH': 8})
+    module.connect(a, inst.ports['A'])
+    module.connect(inst.ports['Y'], y)
+    for idx in range(b_width):
+        inst.ports['B'].tie_signal(1, idx)
+
+    assert not opt_constant_propagation(module)
+    assert 'and_inst' in module.instances
+    assert module.ports['y'].is_connected
+
 if __name__ == '__main__':
     file_name = os.path.basename(__file__)
     pytest.main(args=['-k', file_name])
