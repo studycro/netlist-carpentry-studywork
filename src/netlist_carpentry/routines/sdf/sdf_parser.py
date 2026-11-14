@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from .sdf_models import (
-    ABSOLUTE,
     DEFAULT_TIMESCALE,
     DEFAULT_TIMESCALE_SECONDS,
+    ABSOLUTE,
     INCREMENTAL,
+    DelayContext,
     DelayTriplet,
     DelayType,
     SdfCell,
@@ -67,6 +69,7 @@ TOKEN_PATTERN = re.compile(
     re.VERBOSE,
 )
 
+
 def tokenize(text: str) -> list[str]:
     """Turns SDF text into a flat list of tokens."""
     tokens: list[str] = []
@@ -121,6 +124,7 @@ def extract_port_and_edge(raw_port: str | list[str]) -> tuple[str, str | None]:
         return port, edge
     return raw_port, None
 
+
 def parse_timescale(raw_value: list[Any]) -> tuple[str, float]:
     text = "".join(str(part) for part in raw_value)
     match = TIMESCALE_PATTERN.fullmatch(text)
@@ -130,6 +134,7 @@ def parse_timescale(raw_value: list[Any]) -> tuple[str, float]:
     number = float(match.group("number"))
     unit = match.group("unit").lower()
     return text.strip(), number * TIMESCALE_UNITS_IN_SECONDS[unit]
+
 
 def _has_tag(node: Any, tag: str) -> bool:
     """Checks whether an AST node is a list starting with the expected tag."""
@@ -142,11 +147,13 @@ def _extract_divider(delayfile_node: list[Any]) -> str:
             return str(entry[1])
     return DEFAULT_DIVIDER
 
+
 def _extract_timescale(delayfile_node: list[Any]) -> tuple[str, float]:
     for entry in delayfile_node[1:]:
         if _has_tag(entry, TAG_TIMESCALE) and len(entry) > 1:
             return parse_timescale(entry[1:])
     return DEFAULT_TIMESCALE, DEFAULT_TIMESCALE_SECONDS
+
 
 def _stringify(node: Any) -> str:
     """Renders a nested COND expression back into a readable string."""
@@ -154,17 +161,22 @@ def _stringify(node: Any) -> str:
         return "(" + " ".join(_stringify(part) for part in node) + ")"
     return str(node)
 
-def _iter_iopath_entries(node: Any) -> list[tuple[list[Any], str | None, bool]]:
+
+def _iter_iopath_entries(
+    node: Any,
+    context: DelayContext,
+) -> list[tuple[list[Any], DelayContext]]:
     """IOPATH entries of one DELAY-section child, descending into COND and CONDELSE.
 
-    Returns (iopath_entry, condition, is_condelse) per hit, so conditional delays
-    are kept instead of being dropped.
+    `context` describes the enclosing delay section; a COND or CONDELSE wrapper
+    refines it, so conditional delays keep their condition instead of being dropped.
     """
     if _has_tag(node, TAG_IOPATH):
-        return [(node, None, False)]
+        return [(node, context)]
 
     if _has_tag(node, TAG_CONDELSE):
-        return [(child, None, True) for child in node[1:] if _has_tag(child, TAG_IOPATH)]
+        refined = replace(context, is_condelse=True)
+        return [(child, refined) for child in node[1:] if _has_tag(child, TAG_IOPATH)]
 
     if _has_tag(node, TAG_COND):
         children = node[1:]
@@ -173,21 +185,17 @@ def _iter_iopath_entries(node: Any) -> list[tuple[list[Any], str | None, bool]]:
             len(children),
         )
         condition = " ".join(_stringify(part) for part in children[:split]) or None
+        refined = replace(context, condition=condition)
         return [
-            (child, condition, False)
+            (child, refined)
             for child in children[split:]
             if _has_tag(child, TAG_IOPATH)
         ]
 
     return []
 
-def _build_iopath_spec(
-    entry: list[Any],
-    *,
-    delay_type: DelayType = ABSOLUTE,
-    condition: str | None = None,
-    is_condelse: bool = False,
-) -> SdfIoPathSpec:
+
+def _build_iopath_spec(entry: list[Any], context: DelayContext) -> SdfIoPathSpec:
     _, raw_src_spec, raw_dst_spec, *rest = entry
     raw_src, src_edge = extract_port_and_edge(raw_src_spec)
     raw_dst, dst_edge = extract_port_and_edge(raw_dst_spec)
@@ -205,9 +213,7 @@ def _build_iopath_spec(
         delays=delays,
         src_edge=src_edge,
         dst_edge=dst_edge,
-        delay_type=delay_type,
-        condition=condition,
-        is_condelse=is_condelse,
+        context=context,
         retain=retain,
     )
 
@@ -227,15 +233,11 @@ def _extract_iopaths_from_delay(delay_entries: list[Any]) -> list[SdfIoPathSpec]
         if delay_type is None:
             continue
 
+        context = DelayContext(delay_type=delay_type)
         for child in block[1:]:
             specs.extend(
-                _build_iopath_spec(
-                    entry,
-                    delay_type=delay_type,
-                    condition=condition,
-                    is_condelse=is_condelse,
-                )
-                for entry, condition, is_condelse in _iter_iopath_entries(child)
+                _build_iopath_spec(entry, entry_context)
+                for entry, entry_context in _iter_iopath_entries(child, context)
             )
     return specs
 
