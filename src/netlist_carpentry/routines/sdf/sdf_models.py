@@ -39,13 +39,24 @@ class SdfIoPathSpec:
 
     raw_src: str
     raw_dst: str
-    rise: DelayTriplet
-    fall: DelayTriplet
+    delays: tuple[DelayTriplet, ...]
     src_edge: str | None = None
     dst_edge: str | None = None
     delay_type: DelayType = ABSOLUTE
     condition: str | None = None
     is_condelse: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.delays:
+            raise ValueError(f"IOPATH {self.raw_src}->{self.raw_dst} carries no delay value.")
+
+    @property
+    def rise(self) -> DelayTriplet:
+        return self.delays[0]
+
+    @property
+    def fall(self) -> DelayTriplet:
+        return self.delays[1] if len(self.delays) > 1 else self.rise
 
     @property
     def is_conditional(self) -> bool:
