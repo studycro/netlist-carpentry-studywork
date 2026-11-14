@@ -10,9 +10,9 @@ from .sdf_models import (
     ABSOLUTE,
     DEFAULT_TIMESCALE,
     DEFAULT_TIMESCALE_SECONDS,
+    INCREMENTAL,
     DelayTriplet,
     DelayType,
-    INCREMENTAL,
     SdfCell,
     SdfDelayFile,
     SdfIoPathSpec,
@@ -29,6 +29,8 @@ TAG_CELLTYPE = "CELLTYPE"
 TAG_INSTANCE = "INSTANCE"
 TAG_DELAY = "DELAY"
 TAG_IOPATH = "IOPATH"
+TAG_COND = "COND"
+TAG_CONDELSE = "CONDELSE"
 
 DELAY_TYPE_TAGS: dict[str, DelayType] = {
     "ABSOLUTE": ABSOLUTE,
@@ -145,7 +147,46 @@ def _extract_timescale(delayfile_node: list[Any]) -> tuple[str, float]:
             return parse_timescale(entry[1:])
     return DEFAULT_TIMESCALE, DEFAULT_TIMESCALE_SECONDS
 
-def _build_iopath_spec(entry: list[Any], *, delay_type: DelayType = ABSOLUTE) -> SdfIoPathSpec:
+def _stringify(node: Any) -> str:
+    """Renders a nested COND expression back into a readable string."""
+    if isinstance(node, list):
+        return "(" + " ".join(_stringify(part) for part in node) + ")"
+    return str(node)
+
+def _iter_iopath_entries(node: Any) -> list[tuple[list[Any], str | None, bool]]:
+    """IOPATH entries of one DELAY-section child, descending into COND and CONDELSE.
+
+    Returns (iopath_entry, condition, is_condelse) per hit, so conditional delays
+    are kept instead of being dropped.
+    """
+    if _has_tag(node, TAG_IOPATH):
+        return [(node, None, False)]
+
+    if _has_tag(node, TAG_CONDELSE):
+        return [(child, None, True) for child in node[1:] if _has_tag(child, TAG_IOPATH)]
+
+    if _has_tag(node, TAG_COND):
+        children = node[1:]
+        split = next(
+            (i for i, child in enumerate(children) if _has_tag(child, TAG_IOPATH)),
+            len(children),
+        )
+        condition = " ".join(_stringify(part) for part in children[:split]) or None
+        return [
+            (child, condition, False)
+            for child in children[split:]
+            if _has_tag(child, TAG_IOPATH)
+        ]
+
+    return []
+
+def _build_iopath_spec(
+    entry: list[Any],
+    *,
+    delay_type: DelayType = ABSOLUTE,
+    condition: str | None = None,
+    is_condelse: bool = False,
+) -> SdfIoPathSpec:
     _, raw_src_spec, raw_dst_spec, rise_spec, *rest = entry
     raw_src, src_edge = extract_port_and_edge(raw_src_spec)
     raw_dst, dst_edge = extract_port_and_edge(raw_dst_spec)
@@ -161,6 +202,8 @@ def _build_iopath_spec(entry: list[Any], *, delay_type: DelayType = ABSOLUTE) ->
         src_edge=src_edge,
         dst_edge=dst_edge,
         delay_type=delay_type,
+        condition=condition,
+        is_condelse=is_condelse,
     )
 
 
@@ -168,6 +211,7 @@ def _extract_iopaths_from_delay(delay_entries: list[Any]) -> list[SdfIoPathSpec]
     """Reads the ABSOLUTE and INCREMENTAL sections of one DELAY block.
 
     Any other section is skipped instead of being mistaken for an ABSOLUTE one.
+    COND and CONDELSE wrappers are descended into.
     """
     specs: list[SdfIoPathSpec] = []
     for block in delay_entries:
@@ -178,11 +222,16 @@ def _extract_iopaths_from_delay(delay_entries: list[Any]) -> list[SdfIoPathSpec]
         if delay_type is None:
             continue
 
-        specs.extend(
-            _build_iopath_spec(entry, delay_type=delay_type)
-            for entry in block[1:]
-            if _has_tag(entry, TAG_IOPATH)
-        )
+        for child in block[1:]:
+            specs.extend(
+                _build_iopath_spec(
+                    entry,
+                    delay_type=delay_type,
+                    condition=condition,
+                    is_condelse=is_condelse,
+                )
+                for entry, condition, is_condelse in _iter_iopath_entries(child)
+            )
     return specs
 
 
