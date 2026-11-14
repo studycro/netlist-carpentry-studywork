@@ -44,6 +44,12 @@ class SdfIoPathSpec:
     src_edge: str | None = None
     dst_edge: str | None = None
     delay_type: DelayType = ABSOLUTE
+    condition: str | None = None
+    is_condelse: bool = False
+
+    @property
+    def is_conditional(self) -> bool:
+        return self.condition is not None or self.is_condelse
 
     @property
     def is_incremental(self) -> bool:
