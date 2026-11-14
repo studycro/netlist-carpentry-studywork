@@ -45,6 +45,7 @@ class SdfIoPathSpec:
     delay_type: DelayType = ABSOLUTE
     condition: str | None = None
     is_condelse: bool = False
+    retain: tuple[DelayTriplet, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.delays:
