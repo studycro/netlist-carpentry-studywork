@@ -32,6 +32,26 @@ class DelayTriplet(NamedTuple):
             raise ValueError(f"Expected 3 values (min, typ, max), got {len(values)}.")
         return cls(values[0], values[1], values[2])
 
+@dataclass(frozen=True)
+class DelayContext:
+    """Where inside a DELAY block a spec was found.
+
+    Everything that describes the surrounding delay section rather than the path
+    itself lives here, so a new SDF attribute is one field in this class.
+    """
+
+    delay_type: DelayType = ABSOLUTE
+    condition: str | None = None
+    is_condelse: bool = False
+
+    @property
+    def is_conditional(self) -> bool:
+        return self.condition is not None or self.is_condelse
+
+    @property
+    def is_incremental(self) -> bool:
+        return self.delay_type == INCREMENTAL
+
 
 @dataclass(frozen=True)
 class SdfIoPathSpec:
@@ -42,9 +62,7 @@ class SdfIoPathSpec:
     delays: tuple[DelayTriplet, ...]
     src_edge: str | None = None
     dst_edge: str | None = None
-    delay_type: DelayType = ABSOLUTE
-    condition: str | None = None
-    is_condelse: bool = False
+    context: DelayContext = DelayContext()
     retain: tuple[DelayTriplet, ...] = ()
 
     def __post_init__(self) -> None:
@@ -58,14 +76,6 @@ class SdfIoPathSpec:
     @property
     def fall(self) -> DelayTriplet:
         return self.delays[1] if len(self.delays) > 1 else self.rise
-
-    @property
-    def is_conditional(self) -> bool:
-        return self.condition is not None or self.is_condelse
-
-    @property
-    def is_incremental(self) -> bool:
-        return self.delay_type == INCREMENTAL
 
 
 @dataclass(frozen=True)
