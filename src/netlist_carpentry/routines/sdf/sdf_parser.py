@@ -7,9 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from .sdf_models import (
+    ABSOLUTE,
     DEFAULT_TIMESCALE,
     DEFAULT_TIMESCALE_SECONDS,
     DelayTriplet,
+    DelayType,
+    INCREMENTAL,
     SdfCell,
     SdfDelayFile,
     SdfIoPathSpec,
@@ -26,6 +29,11 @@ TAG_CELLTYPE = "CELLTYPE"
 TAG_INSTANCE = "INSTANCE"
 TAG_DELAY = "DELAY"
 TAG_IOPATH = "IOPATH"
+
+DELAY_TYPE_TAGS: dict[str, DelayType] = {
+    "ABSOLUTE": ABSOLUTE,
+    "INCREMENTAL": INCREMENTAL,
+}
 
 TIMESCALE_UNITS_IN_SECONDS = {
     "s": 1.0,
@@ -137,7 +145,7 @@ def _extract_timescale(delayfile_node: list[Any]) -> tuple[str, float]:
             return parse_timescale(entry[1:])
     return DEFAULT_TIMESCALE, DEFAULT_TIMESCALE_SECONDS
 
-def _build_iopath_spec(entry: list[Any]) -> SdfIoPathSpec:
+def _build_iopath_spec(entry: list[Any], *, delay_type: DelayType = ABSOLUTE) -> SdfIoPathSpec:
     _, raw_src_spec, raw_dst_spec, rise_spec, *rest = entry
     raw_src, src_edge = extract_port_and_edge(raw_src_spec)
     raw_dst, dst_edge = extract_port_and_edge(raw_dst_spec)
@@ -152,16 +160,26 @@ def _build_iopath_spec(entry: list[Any]) -> SdfIoPathSpec:
         fall=fall,
         src_edge=src_edge,
         dst_edge=dst_edge,
+        delay_type=delay_type,
     )
 
 
 def _extract_iopaths_from_delay(delay_entries: list[Any]) -> list[SdfIoPathSpec]:
+    """Reads the ABSOLUTE and INCREMENTAL sections of one DELAY block.
+
+    Any other section is skipped instead of being mistaken for an ABSOLUTE one.
+    """
     specs: list[SdfIoPathSpec] = []
     for block in delay_entries:
-        if not isinstance(block, list):
+        if not isinstance(block, list) or not block:
             continue
+
+        delay_type = DELAY_TYPE_TAGS.get(str(block[0]))
+        if delay_type is None:
+            continue
+
         specs.extend(
-            _build_iopath_spec(entry)
+            _build_iopath_spec(entry, delay_type=delay_type)
             for entry in block[1:]
             if _has_tag(entry, TAG_IOPATH)
         )
