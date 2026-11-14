@@ -6,18 +6,40 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .sdf_models import DelayTriplet, SdfCell, SdfDelayFile, SdfIoPathSpec
+from .sdf_models import (
+    DEFAULT_TIMESCALE,
+    DEFAULT_TIMESCALE_SECONDS,
+    DelayTriplet,
+    SdfCell,
+    SdfDelayFile,
+    SdfIoPathSpec,
+)
 
 TRIPLET_SIZE = 3
 DEFAULT_DIVIDER = "."
 
 TAG_DELAYFILE = "DELAYFILE"
 TAG_DIVIDER = "DIVIDER"
+TAG_TIMESCALE = "TIMESCALE"
 TAG_CELL = "CELL"
 TAG_CELLTYPE = "CELLTYPE"
 TAG_INSTANCE = "INSTANCE"
 TAG_DELAY = "DELAY"
 TAG_IOPATH = "IOPATH"
+
+TIMESCALE_UNITS_IN_SECONDS = {
+    "s": 1.0,
+    "ms": 1e-3,
+    "us": 1e-6,
+    "ns": 1e-9,
+    "ps": 1e-12,
+    "fs": 1e-15,
+}
+
+TIMESCALE_PATTERN = re.compile(
+    r"\s*(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>ms|us|ns|ps|fs|s)\s*",
+    re.IGNORECASE,
+)
 
 IGNORED_TOKEN_KINDS = frozenset({"COMMENT", "WS"})
 
@@ -88,6 +110,15 @@ def extract_port_and_edge(raw_port: str | list[str]) -> tuple[str, str | None]:
         return port, edge
     return raw_port, None
 
+def parse_timescale(raw_value: list[Any]) -> tuple[str, float]:
+    text = "".join(str(part) for part in raw_value)
+    match = TIMESCALE_PATTERN.fullmatch(text)
+    if match is None:
+        raise ValueError(f"Unknown TIMESCALE value {text!r}.")
+
+    number = float(match.group("number"))
+    unit = match.group("unit").lower()
+    return text.strip(), number * TIMESCALE_UNITS_IN_SECONDS[unit]
 
 def _has_tag(node: Any, tag: str) -> bool:
     """Checks whether an AST node is a list starting with the expected tag."""
@@ -100,6 +131,11 @@ def _extract_divider(delayfile_node: list[Any]) -> str:
             return str(entry[1])
     return DEFAULT_DIVIDER
 
+def _extract_timescale(delayfile_node: list[Any]) -> tuple[str, float]:
+    for entry in delayfile_node[1:]:
+        if _has_tag(entry, TAG_TIMESCALE) and len(entry) > 1:
+            return parse_timescale(entry[1:])
+    return DEFAULT_TIMESCALE, DEFAULT_TIMESCALE_SECONDS
 
 def _build_iopath_spec(entry: list[Any]) -> SdfIoPathSpec:
     _, raw_src_spec, raw_dst_spec, rise_spec, *rest = entry
@@ -169,12 +205,18 @@ def parse_sdf(text: str) -> SdfDelayFile:
 
     delayfile_node = ast[0]
     divider = _extract_divider(delayfile_node)
+    timescale, timescale_seconds = _extract_timescale(delayfile_node)
     cells = tuple(
         cell
         for entry in delayfile_node[1:]
         if (cell := _build_cell(entry)) is not None
     )
-    return SdfDelayFile(divider=divider, cells=cells)
+    return SdfDelayFile(
+        divider=divider,
+        cells=cells,
+        timescale=timescale,
+        timescale_seconds=timescale_seconds,
+    )
 
 
 def parse_sdf_file(path: str | Path) -> SdfDelayFile:
