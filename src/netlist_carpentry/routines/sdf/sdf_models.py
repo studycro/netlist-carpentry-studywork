@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import Literal, NamedTuple
+
+DelayType = Literal["ABSOLUTE", "INCREMENTAL"]
+
+ABSOLUTE: DelayType = "ABSOLUTE"
+INCREMENTAL: DelayType = "INCREMENTAL"
 
 DEFAULT_TIMESCALE = "1ns"
 DEFAULT_TIMESCALE_SECONDS = 1e-9
@@ -38,6 +43,11 @@ class SdfIoPathSpec:
     fall: DelayTriplet
     src_edge: str | None = None
     dst_edge: str | None = None
+    delay_type: DelayType = ABSOLUTE
+
+    @property
+    def is_incremental(self) -> bool:
+        return self.delay_type == INCREMENTAL
 
 
 @dataclass(frozen=True)
