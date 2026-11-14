@@ -187,18 +187,16 @@ def _build_iopath_spec(
     condition: str | None = None,
     is_condelse: bool = False,
 ) -> SdfIoPathSpec:
-    _, raw_src_spec, raw_dst_spec, rise_spec, *rest = entry
+    _, raw_src_spec, raw_dst_spec, *raw_delays = entry
     raw_src, src_edge = extract_port_and_edge(raw_src_spec)
     raw_dst, dst_edge = extract_port_and_edge(raw_dst_spec)
 
-    rise = parse_delay_triplet(rise_spec)
-    fall = parse_delay_triplet(rest[0]) if rest else rise
+    delays = tuple(parse_delay_triplet(value) for value in raw_delays)
 
     return SdfIoPathSpec(
         raw_src=raw_src,
         raw_dst=raw_dst,
-        rise=rise,
-        fall=fall,
+        delays=delays,
         src_edge=src_edge,
         dst_edge=dst_edge,
         delay_type=delay_type,
