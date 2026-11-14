@@ -29,6 +29,7 @@ TAG_CELLTYPE = "CELLTYPE"
 TAG_INSTANCE = "INSTANCE"
 TAG_DELAY = "DELAY"
 TAG_IOPATH = "IOPATH"
+TAG_RETAIN = "RETAIN"
 TAG_COND = "COND"
 TAG_CONDELSE = "CONDELSE"
 
@@ -187,11 +188,16 @@ def _build_iopath_spec(
     condition: str | None = None,
     is_condelse: bool = False,
 ) -> SdfIoPathSpec:
-    _, raw_src_spec, raw_dst_spec, *raw_delays = entry
+    _, raw_src_spec, raw_dst_spec, *rest = entry
     raw_src, src_edge = extract_port_and_edge(raw_src_spec)
     raw_dst, dst_edge = extract_port_and_edge(raw_dst_spec)
 
-    delays = tuple(parse_delay_triplet(value) for value in raw_delays)
+    retain: tuple[DelayTriplet, ...] = ()
+    if rest and _has_tag(rest[0], TAG_RETAIN):
+        retain = tuple(parse_delay_triplet(value) for value in rest[0][1:])
+        rest = rest[1:]
+
+    delays = tuple(parse_delay_triplet(value) for value in rest)
 
     return SdfIoPathSpec(
         raw_src=raw_src,
@@ -202,6 +208,7 @@ def _build_iopath_spec(
         delay_type=delay_type,
         condition=condition,
         is_condelse=is_condelse,
+        retain=retain,
     )
 
 
