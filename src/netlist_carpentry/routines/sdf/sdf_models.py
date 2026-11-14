@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
+DEFAULT_TIMESCALE = "1ns"
+DEFAULT_TIMESCALE_SECONDS = 1e-9
 
 class DelayTriplet(NamedTuple):
     """Delay in SDF order (min, typ, max). Missing values are None."""
@@ -49,7 +51,22 @@ class SdfCell:
 
 @dataclass(frozen=True)
 class SdfDelayFile:
-    """Root node of the parsed SDF AST."""
+    """Root node of the parsed SDF AST.
+
+    Delay values in `cells` are kept exactly as written in the file, so they are
+    expressed in `timescale` units. Converting is optional: `to_seconds`.
+    """
 
     divider: str = "."
     cells: tuple[SdfCell, ...] = ()
+    timescale: str = DEFAULT_TIMESCALE
+    timescale_seconds: float = DEFAULT_TIMESCALE_SECONDS
+
+    def to_seconds(self, triplet: DelayTriplet) -> DelayTriplet:
+        """Converts a triplet from this file's timescale to seconds; None stays None."""
+        factor = self.timescale_seconds
+        return DelayTriplet(
+            None if triplet.min is None else triplet.min * factor,
+            None if triplet.typ is None else triplet.typ * factor,
+            None if triplet.max is None else triplet.max * factor,
+        )
