@@ -1,4 +1,7 @@
-"""Parser and AST builder for SDF files."""
+"""SDF semantics: turns s-expressions into the typed models of `sdf_models`.
+
+The generic layer below it (tokenizing, parentheses, tree helpers) lives in `sdf_tokenizer`.
+"""
 
 from __future__ import annotations
 
@@ -8,9 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from .sdf_models import (
+    ABSOLUTE,
     DEFAULT_TIMESCALE,
     DEFAULT_TIMESCALE_SECONDS,
-    ABSOLUTE,
     INCREMENTAL,
     DelayContext,
     DelayTriplet,
@@ -19,6 +22,7 @@ from .sdf_models import (
     SdfDelayFile,
     SdfIoPathSpec,
 )
+from .sdf_tokenizer import find_tagged, has_tag, parse_tokens, stringify, tokenize
 
 TRIPLET_SIZE = 3
 DEFAULT_DIVIDER = "."
@@ -54,56 +58,6 @@ TIMESCALE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-IGNORED_TOKEN_KINDS = frozenset({"COMMENT", "WS"})
-
-TOKEN_PATTERN = re.compile(
-    r"""
-    (?P<COMMENT>//[^\n]*|/\*[\s\S]*?\*/) |
-    (?P<WS>\s+) |
-    (?P<LPAREN>\() |
-    (?P<RPAREN>\)) |
-    (?P<STRING>"(?:\\.|[^"\\])*") |
-    (?P<ESCAPED>\\\S+) |
-    (?P<ATOM>[^\s()"]+)
-    """,
-    re.VERBOSE,
-)
-
-
-def tokenize(text: str) -> list[str]:
-    """Turns SDF text into a flat list of tokens."""
-    tokens: list[str] = []
-    for match in TOKEN_PATTERN.finditer(text):
-        kind = match.lastgroup
-        if kind in IGNORED_TOKEN_KINDS:
-            continue
-
-        value = match.group()
-        if kind == "STRING":
-            value = value[1:-1]
-        tokens.append(value)
-
-    return tokens
-
-
-def parse_tokens(tokens: list[str]) -> list[Any]:
-    """Turns tokens into nested S-expressions (lists)."""
-    stack: list[list[Any]] = [[]]
-    for token in tokens:
-        if token == "(":
-            stack.append([])
-        elif token == ")":
-            if len(stack) == 1:
-                raise ValueError("Syntax error: unexpected ')'")
-            completed_block = stack.pop()
-            stack[-1].append(completed_block)
-        else:
-            stack[-1].append(token)
-
-    if len(stack) != 1:
-        raise ValueError("Syntax error: missing ')'")
-    return stack[0]
-
 
 def parse_delay_triplet(raw_val: list[str] | str) -> DelayTriplet:
     """DelayTriplet(min, typ, max)."""
@@ -136,30 +90,18 @@ def parse_timescale(raw_value: list[Any]) -> tuple[str, float]:
     return text.strip(), number * TIMESCALE_UNITS_IN_SECONDS[unit]
 
 
-def _has_tag(node: Any, tag: str) -> bool:
-    """Checks whether an AST node is a list starting with the expected tag."""
-    return isinstance(node, list) and bool(node) and node[0] == tag
-
-
 def _extract_divider(delayfile_node: list[Any]) -> str:
-    for entry in delayfile_node[1:]:
-        if _has_tag(entry, TAG_DIVIDER) and len(entry) > 1:
-            return str(entry[1])
+    entry = find_tagged(delayfile_node, TAG_DIVIDER)
+    if entry is not None and len(entry) > 1:
+        return str(entry[1])
     return DEFAULT_DIVIDER
 
 
 def _extract_timescale(delayfile_node: list[Any]) -> tuple[str, float]:
-    for entry in delayfile_node[1:]:
-        if _has_tag(entry, TAG_TIMESCALE) and len(entry) > 1:
-            return parse_timescale(entry[1:])
+    entry = find_tagged(delayfile_node, TAG_TIMESCALE)
+    if entry is not None and len(entry) > 1:
+        return parse_timescale(entry[1:])
     return DEFAULT_TIMESCALE, DEFAULT_TIMESCALE_SECONDS
-
-
-def _stringify(node: Any) -> str:
-    """Renders a nested COND expression back into a readable string."""
-    if isinstance(node, list):
-        return "(" + " ".join(_stringify(part) for part in node) + ")"
-    return str(node)
 
 
 def _iter_iopath_entries(
@@ -171,25 +113,25 @@ def _iter_iopath_entries(
     `context` describes the enclosing delay section; a COND or CONDELSE wrapper
     refines it, so conditional delays keep their condition instead of being dropped.
     """
-    if _has_tag(node, TAG_IOPATH):
+    if has_tag(node, TAG_IOPATH):
         return [(node, context)]
 
-    if _has_tag(node, TAG_CONDELSE):
+    if has_tag(node, TAG_CONDELSE):
         refined = replace(context, is_condelse=True)
-        return [(child, refined) for child in node[1:] if _has_tag(child, TAG_IOPATH)]
+        return [(child, refined) for child in node[1:] if has_tag(child, TAG_IOPATH)]
 
-    if _has_tag(node, TAG_COND):
+    if has_tag(node, TAG_COND):
         children = node[1:]
         split = next(
-            (i for i, child in enumerate(children) if _has_tag(child, TAG_IOPATH)),
+            (i for i, child in enumerate(children) if has_tag(child, TAG_IOPATH)),
             len(children),
         )
-        condition = " ".join(_stringify(part) for part in children[:split]) or None
+        condition = " ".join(stringify(part) for part in children[:split]) or None
         refined = replace(context, condition=condition)
         return [
             (child, refined)
             for child in children[split:]
-            if _has_tag(child, TAG_IOPATH)
+            if has_tag(child, TAG_IOPATH)
         ]
 
     return []
@@ -201,7 +143,7 @@ def _build_iopath_spec(entry: list[Any], context: DelayContext) -> SdfIoPathSpec
     raw_dst, dst_edge = extract_port_and_edge(raw_dst_spec)
 
     retain: tuple[DelayTriplet, ...] = ()
-    if rest and _has_tag(rest[0], TAG_RETAIN):
+    if rest and has_tag(rest[0], TAG_RETAIN):
         retain = tuple(parse_delay_triplet(value) for value in rest[0][1:])
         rest = rest[1:]
 
@@ -243,7 +185,7 @@ def _extract_iopaths_from_delay(delay_entries: list[Any]) -> list[SdfIoPathSpec]
 
 
 def _build_cell(entry: Any) -> SdfCell | None:
-    if not _has_tag(entry, TAG_CELL):
+    if not has_tag(entry, TAG_CELL):
         return None
 
     inst_name: str | None = None
@@ -274,7 +216,7 @@ def _build_cell(entry: Any) -> SdfCell | None:
 def parse_sdf(text: str) -> SdfDelayFile:
     """Parses SDF text directly into a typed SdfDelayFile object."""
     ast = parse_tokens(tokenize(text))
-    if not ast or not _has_tag(ast[0], TAG_DELAYFILE):
+    if not ast or not has_tag(ast[0], TAG_DELAYFILE):
         raise ValueError("Not a valid SDF file: DELAYFILE block is missing.")
 
     delayfile_node = ast[0]
