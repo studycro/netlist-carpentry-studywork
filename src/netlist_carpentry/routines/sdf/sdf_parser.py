@@ -6,7 +6,8 @@ The generic layer below it (tokenizing, parentheses, tree helpers) lives in `sdf
 from __future__ import annotations
 
 import re
-from dataclasses import replace
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -24,27 +25,29 @@ from .sdf_models import (
 )
 from .sdf_tokenizer import find_tagged, has_tag, parse_tokens, stringify, tokenize
 
-TRIPLET_SIZE = 3
-DEFAULT_DIVIDER = "."
+__all__ = ["parse_sdf", "parse_sdf_file"]
 
-TAG_DELAYFILE = "DELAYFILE"
-TAG_DIVIDER = "DIVIDER"
-TAG_TIMESCALE = "TIMESCALE"
-TAG_CELL = "CELL"
-TAG_CELLTYPE = "CELLTYPE"
-TAG_INSTANCE = "INSTANCE"
-TAG_DELAY = "DELAY"
-TAG_IOPATH = "IOPATH"
-TAG_RETAIN = "RETAIN"
-TAG_COND = "COND"
-TAG_CONDELSE = "CONDELSE"
+_TRIPLET_SIZE = 3
+_DEFAULT_DIVIDER = "."
 
-DELAY_TYPE_TAGS: dict[str, DelayType] = {
+_TAG_DELAYFILE = "DELAYFILE"
+_TAG_DIVIDER = "DIVIDER"
+_TAG_TIMESCALE = "TIMESCALE"
+_TAG_CELL = "CELL"
+_TAG_CELLTYPE = "CELLTYPE"
+_TAG_INSTANCE = "INSTANCE"
+_TAG_DELAY = "DELAY"
+_TAG_IOPATH = "IOPATH"
+_TAG_RETAIN = "RETAIN"
+_TAG_COND = "COND"
+_TAG_CONDELSE = "CONDELSE"
+
+_DELAY_TYPE_TAGS: dict[str, DelayType] = {
     "ABSOLUTE": ABSOLUTE,
     "INCREMENTAL": INCREMENTAL,
 }
 
-TIMESCALE_UNITS_IN_SECONDS = {
+_TIMESCALE_UNITS_IN_SECONDS = {
     "s": 1.0,
     "ms": 1e-3,
     "us": 1e-6,
@@ -53,25 +56,24 @@ TIMESCALE_UNITS_IN_SECONDS = {
     "fs": 1e-15,
 }
 
-TIMESCALE_PATTERN = re.compile(
+_TIMESCALE_PATTERN = re.compile(
     r"\s*(?P<number>\d+(?:\.\d+)?)\s*(?P<unit>ms|us|ns|ps|fs|s)\s*",
     re.IGNORECASE,
 )
 
-
-def parse_delay_triplet(raw_val: list[str] | str) -> DelayTriplet:
+def _parse_delay_triplet(raw_val: list[str] | str) -> DelayTriplet:
     """DelayTriplet(min, typ, max)."""
     val_str = raw_val[0] if isinstance(raw_val, list) else raw_val
     parts: list[float | None] = [float(p) if p else None for p in val_str.split(":")]
 
-    while len(parts) < TRIPLET_SIZE:
+    while len(parts) < _TRIPLET_SIZE:
         parts.append(parts[-1])
 
-    min_val, typ_val, max_val = parts[:TRIPLET_SIZE]
+    min_val, typ_val, max_val = parts[:_TRIPLET_SIZE]
     return DelayTriplet(min=min_val, typ=typ_val, max=max_val)
 
 
-def extract_port_and_edge(raw_port: str | list[str]) -> tuple[str, str | None]:
+def _extract_port_and_edge(raw_port: str | list[str]) -> tuple[str, str | None]:
     """['posedge', 'CLK'] -> ('CLK', 'posedge'); 'A' -> ('A', None)."""
     if isinstance(raw_port, list):
         edge, port = raw_port
@@ -79,75 +81,93 @@ def extract_port_and_edge(raw_port: str | list[str]) -> tuple[str, str | None]:
     return raw_port, None
 
 
-def parse_timescale(raw_value: list[Any]) -> tuple[str, float]:
+def _parse_timescale(raw_value: list[Any]) -> tuple[str, float]:
     text = "".join(str(part) for part in raw_value)
-    match = TIMESCALE_PATTERN.fullmatch(text)
+    match = _TIMESCALE_PATTERN.fullmatch(text)
     if match is None:
         raise ValueError(f"Unknown TIMESCALE value {text!r}.")
 
     number = float(match.group("number"))
     unit = match.group("unit").lower()
-    return text.strip(), number * TIMESCALE_UNITS_IN_SECONDS[unit]
-
+    return text.strip(), number * _TIMESCALE_UNITS_IN_SECONDS[unit]
 
 def _extract_divider(delayfile_node: list[Any]) -> str:
-    entry = find_tagged(delayfile_node, TAG_DIVIDER)
+    entry = find_tagged(delayfile_node, _TAG_DIVIDER)
     if entry is not None and len(entry) > 1:
         return str(entry[1])
-    return DEFAULT_DIVIDER
+    return _DEFAULT_DIVIDER
 
 
 def _extract_timescale(delayfile_node: list[Any]) -> tuple[str, float]:
-    entry = find_tagged(delayfile_node, TAG_TIMESCALE)
+    entry = find_tagged(delayfile_node, _TAG_TIMESCALE)
     if entry is not None and len(entry) > 1:
-        return parse_timescale(entry[1:])
+        return _parse_timescale(entry[1:])
     return DEFAULT_TIMESCALE, DEFAULT_TIMESCALE_SECONDS
 
 
-def _iter_iopath_entries(
-    node: Any,
-    context: DelayContext,
-) -> list[tuple[list[Any], DelayContext]]:
-    """IOPATH entries of one DELAY-section child, descending into COND and CONDELSE.
+_IoPathEntries = list[tuple[list[Any], DelayContext]]
 
-    `context` describes the enclosing delay section; a COND or CONDELSE wrapper
-    refines it, so conditional delays keep their condition instead of being dropped.
+_DelayChildHandler = Callable[[list[Any], DelayContext], _IoPathEntries]
+
+
+def _iopath_children(children: list[Any], context: DelayContext) -> _IoPathEntries:
+    """Pairs every IOPATH among `children` with `context`."""
+    return [(child, context) for child in children if has_tag(child, _TAG_IOPATH)]
+
+
+def _unwrap_iopath(node: list[Any], context: DelayContext) -> _IoPathEntries:
+    """A bare `(IOPATH ...)`: the context stays as it is."""
+    return [(node, context)]
+
+
+def _unwrap_condelse(node: list[Any], context: DelayContext) -> _IoPathEntries:
+    """`(CONDELSE (IOPATH ...) ...)`: marks the paths as the default branch."""
+    return _iopath_children(node[1:], replace(context, is_condelse=True))
+
+
+def _unwrap_cond(node: list[Any], context: DelayContext) -> _IoPathEntries:
+    """`(COND <expression> (IOPATH ...) ...)`: everything before the first IOPATH
+    belongs to the condition expression."""
+    children = node[1:]
+    split = next(
+        (i for i, child in enumerate(children) if has_tag(child, _TAG_IOPATH)),
+        len(children),
+    )
+    condition = " ".join(stringify(part) for part in children[:split]) or None
+    return _iopath_children(children[split:], replace(context, condition=condition))
+
+
+_DELAY_CHILD_HANDLERS: dict[str, _DelayChildHandler] = {
+    _TAG_IOPATH: _unwrap_iopath,
+    _TAG_CONDELSE: _unwrap_condelse,
+    _TAG_COND: _unwrap_cond,
+}
+
+def _iter_iopath_entries(node: Any, context: DelayContext) -> _IoPathEntries:
+    """IOPATH entries of one DELAY-section child, descending into known wrappers.
+
+    `context` describes the enclosing delay section; a wrapper refines it, so
+    conditional delays keep their condition instead of being dropped. A child with
+    no handler yields nothing.
     """
-    if has_tag(node, TAG_IOPATH):
-        return [(node, context)]
+    if not isinstance(node, list) or not node:
+        return []
 
-    if has_tag(node, TAG_CONDELSE):
-        refined = replace(context, is_condelse=True)
-        return [(child, refined) for child in node[1:] if has_tag(child, TAG_IOPATH)]
-
-    if has_tag(node, TAG_COND):
-        children = node[1:]
-        split = next(
-            (i for i, child in enumerate(children) if has_tag(child, TAG_IOPATH)),
-            len(children),
-        )
-        condition = " ".join(stringify(part) for part in children[:split]) or None
-        refined = replace(context, condition=condition)
-        return [
-            (child, refined)
-            for child in children[split:]
-            if has_tag(child, TAG_IOPATH)
-        ]
-
-    return []
+    handler = _DELAY_CHILD_HANDLERS.get(str(node[0]))
+    return handler(node, context) if handler is not None else []
 
 
 def _build_iopath_spec(entry: list[Any], context: DelayContext) -> SdfIoPathSpec:
     _, raw_src_spec, raw_dst_spec, *rest = entry
-    raw_src, src_edge = extract_port_and_edge(raw_src_spec)
-    raw_dst, dst_edge = extract_port_and_edge(raw_dst_spec)
+    raw_src, src_edge = _extract_port_and_edge(raw_src_spec)
+    raw_dst, dst_edge = _extract_port_and_edge(raw_dst_spec)
 
     retain: tuple[DelayTriplet, ...] = ()
-    if rest and has_tag(rest[0], TAG_RETAIN):
-        retain = tuple(parse_delay_triplet(value) for value in rest[0][1:])
+    if rest and has_tag(rest[0], _TAG_RETAIN):
+        retain = tuple(_parse_delay_triplet(value) for value in rest[0][1:])
         rest = rest[1:]
 
-    delays = tuple(parse_delay_triplet(value) for value in rest)
+    delays = tuple(_parse_delay_triplet(value) for value in rest)
 
     return SdfIoPathSpec(
         raw_src=raw_src,
@@ -171,7 +191,7 @@ def _extract_iopaths_from_delay(delay_entries: list[Any]) -> list[SdfIoPathSpec]
         if not isinstance(block, list) or not block:
             continue
 
-        delay_type = DELAY_TYPE_TAGS.get(str(block[0]))
+        delay_type = _DELAY_TYPE_TAGS.get(str(block[0]))
         if delay_type is None:
             continue
 
@@ -184,39 +204,71 @@ def _extract_iopaths_from_delay(delay_entries: list[Any]) -> list[SdfIoPathSpec]
     return specs
 
 
+@dataclass
+class _CellBuilder:
+    """Collects what the handlers below read out of one CELL block.
+
+    A new construct adds a field here and a handler, not a branch in `_build_cell`.
+    """
+
+    instance_name: str | None = None
+    cell_type: str | None = None
+    iopaths: list[SdfIoPathSpec] = field(default_factory=list)
+
+    def build(self) -> SdfCell | None:
+        """The finished cell, or None when the block carries no INSTANCE."""
+        if not self.instance_name:
+            return None
+        return SdfCell(
+            instance_name=self.instance_name,
+            cell_type=self.cell_type,
+            iopaths=tuple(self.iopaths),
+        )
+
+
+_CellHandler = Callable[[_CellBuilder, list[Any]], None]
+
+
+def _handle_instance(builder: _CellBuilder, payload: list[Any]) -> None:
+    if payload:
+        builder.instance_name = str(payload[0])
+
+
+def _handle_celltype(builder: _CellBuilder, payload: list[Any]) -> None:
+    if payload:
+        builder.cell_type = str(payload[0])
+
+
+def _handle_delay(builder: _CellBuilder, payload: list[Any]) -> None:
+    builder.iopaths.extend(_extract_iopaths_from_delay(payload))
+
+
+_CELL_HANDLERS: dict[str, _CellHandler] = {
+    _TAG_INSTANCE: _handle_instance,
+    _TAG_CELLTYPE: _handle_celltype,
+    _TAG_DELAY: _handle_delay,
+}
+
 def _build_cell(entry: Any) -> SdfCell | None:
-    if not has_tag(entry, TAG_CELL):
+    """Reads one `(CELL ...)` block. Constructs without a handler are skipped."""
+    if not has_tag(entry, _TAG_CELL):
         return None
 
-    inst_name: str | None = None
-    cell_type: str | None = None
-    iopaths: list[SdfIoPathSpec] = []
-
+    builder = _CellBuilder()
     for item in entry[1:]:
         if not isinstance(item, list) or not item:
             continue
-        tag, *payload = item
-        if tag == TAG_INSTANCE and payload:
-            inst_name = str(payload[0])
-        elif tag == TAG_CELLTYPE and payload:
-            cell_type = str(payload[0])
-        elif tag == TAG_DELAY:
-            iopaths.extend(_extract_iopaths_from_delay(payload))
+        handler = _CELL_HANDLERS.get(str(item[0]))
+        if handler is not None:
+            handler(builder, item[1:])
 
-    if not inst_name:
-        return None
-
-    return SdfCell(
-        instance_name=inst_name,
-        cell_type=cell_type,
-        iopaths=tuple(iopaths),
-    )
+    return builder.build()
 
 
 def parse_sdf(text: str) -> SdfDelayFile:
     """Parses SDF text directly into a typed SdfDelayFile object."""
     ast = parse_tokens(tokenize(text))
-    if not ast or not has_tag(ast[0], TAG_DELAYFILE):
+    if not ast or not has_tag(ast[0], _TAG_DELAYFILE):
         raise ValueError("Not a valid SDF file: DELAYFILE block is missing.")
 
     delayfile_node = ast[0]
