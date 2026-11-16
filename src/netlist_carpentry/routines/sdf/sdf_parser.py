@@ -21,6 +21,7 @@ from .sdf_models import (
     DelayType,
     SdfCell,
     SdfDelayFile,
+    SdfHeader,
     SdfIoPathSpec,
 )
 from .sdf_tokenizer import find_tagged, has_tag, parse_tokens, stringify, tokenize
@@ -31,6 +32,15 @@ _TRIPLET_SIZE = 3
 _DEFAULT_DIVIDER = "."
 
 _TAG_DELAYFILE = "DELAYFILE"
+_TAG_SDFVERSION = "SDFVERSION"
+_TAG_DESIGN = "DESIGN"
+_TAG_DATE = "DATE"
+_TAG_VENDOR = "VENDOR"
+_TAG_PROGRAM = "PROGRAM"
+_TAG_VERSION = "VERSION"
+_TAG_VOLTAGE = "VOLTAGE"
+_TAG_PROCESS = "PROCESS"
+_TAG_TEMPERATURE = "TEMPERATURE"
 _TAG_DIVIDER = "DIVIDER"
 _TAG_TIMESCALE = "TIMESCALE"
 _TAG_CELL = "CELL"
@@ -96,6 +106,36 @@ def _extract_divider(delayfile_node: list[Any]) -> str:
     if entry is not None and len(entry) > 1:
         return str(entry[1])
     return _DEFAULT_DIVIDER
+
+def _header_text(delayfile_node: list[Any], tag: str) -> str | None:
+    entry = find_tagged(delayfile_node, tag)
+    if entry is None or len(entry) < 2:
+        return None
+    return str(entry[1])
+
+
+def _header_triplet(delayfile_node: list[Any], tag: str) -> DelayTriplet | None:
+    text = _header_text(delayfile_node, tag)
+    if text is None:
+        return None
+    try:
+        return _parse_delay_triplet(text)
+    except ValueError as exc:
+        raise ValueError(f"Cannot read {tag} value {text!r}: {exc}") from exc
+
+
+def _extract_header(delayfile_node: list[Any]) -> SdfHeader:
+    return SdfHeader(
+        sdf_version=_header_text(delayfile_node, _TAG_SDFVERSION),
+        design=_header_text(delayfile_node, _TAG_DESIGN),
+        date=_header_text(delayfile_node, _TAG_DATE),
+        vendor=_header_text(delayfile_node, _TAG_VENDOR),
+        program=_header_text(delayfile_node, _TAG_PROGRAM),
+        program_version=_header_text(delayfile_node, _TAG_VERSION),
+        voltage=_header_triplet(delayfile_node, _TAG_VOLTAGE),
+        process=_header_text(delayfile_node, _TAG_PROCESS),
+        temperature=_header_triplet(delayfile_node, _TAG_TEMPERATURE),
+    )
 
 
 def _extract_timescale(delayfile_node: list[Any]) -> tuple[str, float]:
@@ -284,6 +324,7 @@ def parse_sdf(text: str) -> SdfDelayFile:
         cells=cells,
         timescale=timescale,
         timescale_seconds=timescale_seconds,
+        header=_extract_header(delayfile_node),
     )
 
 
