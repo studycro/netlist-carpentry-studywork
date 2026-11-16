@@ -88,6 +88,25 @@ class SdfCell:
 
 
 @dataclass(frozen=True)
+class SdfHeader:
+    """Descriptive entries of the DELAYFILE header.
+
+    `voltage`, `process` and `temperature` are the operating conditions and say which
+    corner the file describes. Missing entries stay None; most of them are optional.
+    """
+
+    sdf_version: str | None = None
+    design: str | None = None
+    date: str | None = None
+    vendor: str | None = None
+    program: str | None = None
+    program_version: str | None = None
+    voltage: DelayTriplet | None = None
+    process: str | None = None
+    temperature: DelayTriplet | None = None
+
+
+@dataclass(frozen=True)
 class SdfDelayFile:
     """Root node of the parsed SDF AST.
 
@@ -99,6 +118,7 @@ class SdfDelayFile:
     cells: tuple[SdfCell, ...] = ()
     timescale: str = DEFAULT_TIMESCALE
     timescale_seconds: float = DEFAULT_TIMESCALE_SECONDS
+    header: SdfHeader = SdfHeader()
 
     def to_seconds(self, triplet: DelayTriplet) -> DelayTriplet:
         """Converts a triplet from this file's timescale to seconds; None stays None."""
